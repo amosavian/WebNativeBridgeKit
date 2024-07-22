@@ -1,0 +1,224 @@
+//
+//  View.swift
+//
+//
+//  Created by Amir Abbas Mousavian on 7/17/24.
+//
+
+import Foundation
+import WebKit
+#if canImport(UIKit)
+import UIKit
+#endif
+
+extension FunctionArgumentKeyword {
+    fileprivate static let elementID: Self = "elementID"
+    fileprivate static let format: Self = "format"
+    fileprivate static let compressionQuality: Self = "compressionQuality"
+}
+
+struct ViewFunction: CallableFunctionRegistry {
+    static let allFunctions: [FunctionName: FunctionSignature] = [
+        "view.getViewTitle": getViewTitle,
+        "view.setViewTitle": setViewTitle,
+        "view.getStatusbarStyle": getStatusbarStyle,
+        "view.setStatusbarStyle": setStatusbarStyle,
+        "view.getScreenshot": getScreenshot,
+    ]
+    
+    @MainActor
+    static func getViewTitle(_ context: FunctionContext, _: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+#if canImport(UIKit)
+        guard let vc = context.webView?.parentViewController else { return nil }
+        return vc.navigationItem.title ?? vc.title
+#elseif canImport(AppKit)
+        fatalError("Not implemented")
+#else
+        return nil
+#endif
+    }
+    
+    @MainActor
+    static func setViewTitle(_ context: FunctionContext, _ args: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+#if canImport(UIKit)
+        guard let vc = context.webView?.parentViewController else { return nil }
+        guard let title = args.first as? String else {
+            return nil
+        }
+        vc.navigationItem.title = title
+        return nil
+#elseif canImport(AppKit)
+        fatalError("Not implemented")
+#else
+        return nil
+#endif
+    }
+    
+    @MainActor
+    static func getStatusbarStyle(_ context: FunctionContext, _: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+#if canImport(UIKit)
+        guard let vc = context.webView?.parentViewController else { return nil }
+        
+        return switch (vc.prefersStatusBarHidden, vc.preferredStatusBarStyle) {
+        case (true, _):
+            "none"
+        case (_, .default):
+            "default"
+        case (_, .darkContent):
+            "light"
+        case (_, .lightContent):
+            "dark"
+        case (false, _):
+            nil
+        }
+#else
+        return nil
+#endif
+    }
+    
+    @MainActor
+    static func setStatusbarStyle(_ context: FunctionContext, _ args: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+#if canImport(UIKit)
+        guard let vc = context.webView?.parentViewController as? PreferenceCustomizableViewController else { return nil }
+        guard let style = args.first as? String else {
+            return nil
+        }
+        
+        switch style {
+        case "none":
+            vc.prefersStatusBarHidden = true
+        case "default":
+            vc.prefersStatusBarHidden = false
+            vc.preferredStatusBarStyle = .default
+        case "light":
+            vc.prefersStatusBarHidden = false
+            vc.preferredStatusBarStyle = .darkContent
+        case "dark":
+            vc.prefersStatusBarHidden = false
+            vc.preferredStatusBarStyle = .lightContent
+        default:
+            break
+        }
+        vc.setNeedsStatusBarAppearanceUpdate()
+        return nil
+#else
+        return nil
+#endif
+    }
+    
+    @MainActor
+    static func getScreenshot(_ context: FunctionContext, _: [Any], _ kwArgs: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+        guard let webView = context.webView else {
+            return nil
+        }
+        let rect: CGRect?
+        if let id = kwArgs[.elementID] as? String {
+            rect = try await webView.rectOfElement(id: id)
+        } else {
+            rect = nil
+        }
+        
+        let configuration = WKSnapshotConfiguration()
+        configuration.rect = rect ?? .null
+        let image = try await webView.takeSnapshot(configuration: configuration)
+        switch kwArgs[.format] as? String {
+        case "image/jpeg":
+            let compressionQuality = kwArgs[.compressionQuality] as? Double ?? 0.9
+            return image.jpegData(compressionQuality: compressionQuality)
+        case "image/heic":
+#if canImport(UIKit)
+            if #available(iOS 17.0, *) {
+                return image.heicData()
+            }
+#endif
+            return nil
+        case "image/png":
+            fallthrough
+        default:
+            return image.pngData()
+        }
+    }
+}
+
+#if canImport(AppKit)
+extension NSImage {
+    func pngData() -> Data? {
+        (representations.first as? NSBitmapImageRep)?.representation(using: .png, properties: [:])
+    }
+    
+    func jpegData(compressionQuality: CGFloat) -> Data? {
+        (representations.first as? NSBitmapImageRep)?.representation(using: .jpeg, properties: [.compressionFactor: compressionQuality])
+    }
+}
+#endif
+
+#if canImport(UIKit)
+public protocol PreferenceCustomizableViewController: UIViewController {
+    var preferredStatusBarStyle: UIStatusBarStyle { get set }
+    var prefersStatusBarHidden: Bool { get set }
+}
+
+extension UIStatusBarStyle {
+    fileprivate init(name: String?) {
+        switch name {
+        case "default":
+            self = .default
+        case "lightContent":
+            self = .lightContent
+        case "darkContent":
+            self = .darkContent
+        default:
+            self = .default
+        }
+    }
+    
+    fileprivate var name: String {
+        switch self {
+        case .default:
+            "default"
+        case .lightContent:
+            "lightContent"
+        case .darkContent:
+            "darkContent"
+        @unknown default:
+            "default"
+        }
+    }
+}
+
+extension UIView {
+    var parentViewController: UIViewController? {
+        // Starts from next (As we know self is not a UIViewController).
+        var parentResponder: UIResponder? = next
+        while parentResponder != nil {
+            if let viewController = parentResponder as? UIViewController {
+                return viewController
+            }
+            parentResponder = parentResponder?.next
+        }
+        return nil
+    }
+}
+#endif
+
+extension WKWebView {
+    @MainActor
+    func rectOfElement(id: String) async throws -> CGRect? {
+        let js = """
+        function f() {
+            var r = document.getElementById('\(id)').getBoundingClientRect();
+            if (r) {
+                return '{{'+r.left+','+r.top+'},{'+r.width+','+r.height+'}}';
+            }
+            return null;
+        }
+        f();
+        """
+        let rect = try await evaluateJavaScript(js) as? String
+#if canImport(UIKit)
+        return rect.map(NSCoder.cgRect(for:))
+#else
+        return nil
+#endif
+    }
+}
