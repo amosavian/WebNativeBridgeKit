@@ -14,7 +14,7 @@ extension FunctionArgumentKeyword {
     fileprivate static let localizedReason: Self = "localizedReason"
     fileprivate static let id: Self = "id"
     fileprivate static let credential: Self = "credential"
-    fileprivate static let synchronizable: Self = "synchronizable"
+    static let synchronizable: Self = "synchronizable"
     fileprivate static let useBiometric: Self = "useBiometric"
     fileprivate static let useDevicePin: Self = "useDevicePin"
     fileprivate static let currentUser: Self = "currentUser"
@@ -31,7 +31,7 @@ struct BiometricFunction: CallableFunctionRegistry {
     ]
     
     static func biometricType(_ context: FunctionContext, _: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
-        guard context.frameInfo.isMainFrame else { return nil }
+        guard await context.checkSameSecurityOrigin() else { return nil }
         let context = LAContext()
         var error: NSError?
         let result = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
@@ -45,7 +45,7 @@ struct BiometricFunction: CallableFunctionRegistry {
     }
     
     static func domainState(_ context: FunctionContext, _: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
-        guard context.frameInfo.isMainFrame else { return nil }
+        guard await context.checkSameSecurityOrigin() else { return nil }
         let context = LAContext()
         var error: NSError?
         let result = context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
@@ -59,7 +59,7 @@ struct BiometricFunction: CallableFunctionRegistry {
     }
     
     static func canEvaluate(_ context: FunctionContext, _ args: [Any], _ kwArgs: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
-        guard context.frameInfo.isMainFrame else { return nil }
+        guard await context.checkSameSecurityOrigin() else { return nil }
         let policy = LAPolicy(name: kwArgs[.policy] as? String ?? (args.first as? String))
         
         var error: NSError?
@@ -71,7 +71,7 @@ struct BiometricFunction: CallableFunctionRegistry {
     }
     
     static func evaluate(_ context: FunctionContext, _ args: [Any], _ kwArgs: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
-        guard context.frameInfo.isMainFrame else { return nil }
+        guard await context.checkSameSecurityOrigin() else { return nil }
         let policy = LAPolicy(name: kwArgs[.policy] as? String ?? (args.first as? String))
         let localizedReason = kwArgs[.localizedReason] as? String ?? (args[safe: 1] as? String) ?? ""
         
@@ -80,14 +80,12 @@ struct BiometricFunction: CallableFunctionRegistry {
     }
     
     static func setCredential(_ context: FunctionContext, _: [any Sendable], _ kwArgs: [FunctionArgumentKeyword: any Sendable]) async throws -> (any Encodable & Sendable)? {
-        guard context.frameInfo.isMainFrame else { return nil }
-        
+        guard let username = kwArgs[.id] as? String, let credential = kwArgs[.credential] as? String else {
+            return nil
+        }
+        let syncronizable = (kwArgs[.synchronizable] as? Bool ?? false)
+        guard let url = context.frameInfo.url, let host = url.host else { return nil }
         return try await Task.detached(priority: .userInitiated) {
-            guard let username = kwArgs[.id] as? String, let credential = kwArgs[.credential] as? any Encodable else {
-                return nil
-            }
-            let syncronizable = (kwArgs[.synchronizable] as? Bool ?? false)
-            guard let url = await context.webView?.url, let host = url.host else { return nil }
             let query = try [
                 kSecClass: kSecClassInternetPassword,
                 kSecAttrProtocol: kSecAttrProtocolHTTPS,
@@ -95,7 +93,7 @@ struct BiometricFunction: CallableFunctionRegistry {
                 kSecAttrSynchronizable: syncronizable ? kCFBooleanTrue! : kCFBooleanFalse!,
                 kSecAttrAccount: username,
                 kSecAttrAccessControl: SecAccessControl.create(kwArgs: kwArgs),
-                kSecValueData: JSONEncoder().encode(credential),
+                kSecValueData: Data(credential.utf8),
             ] as CFDictionary
             
             return SecItemAdd(query, nil)
@@ -103,11 +101,10 @@ struct BiometricFunction: CallableFunctionRegistry {
     }
     
     static func getCredential(_ context: FunctionContext, _: [Any], _ kwArgs: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
-        guard context.frameInfo.isMainFrame else { return nil }
         guard let username = kwArgs[.id] as? String else {
             return nil
         }
-        guard let url = await context.webView?.url, let host = url.host else { return nil }
+        guard let url = context.frameInfo.url, let host = url.host else { return nil }
         
         // To prevent blocking main thread and UI.
         return try await Task.detached(priority: .userInitiated) {
@@ -124,19 +121,8 @@ struct BiometricFunction: CallableFunctionRegistry {
             var dataTypeRef: AnyObject? = nil
             let status = SecItemCopyMatching(query, &dataTypeRef)
             if status == noErr {
-                let result = try (dataTypeRef as? Data).flatMap {
-                    try JSONDecoder().decode(AnyCodable.self, from: $0)
-                }
-                switch result?.value {
-                case let value as String:
-                    return value
-                case let value as [String: String]:
-                    return value
-                case let value as [String]:
-                    return value
-                default:
-                    assertionFailure("Unknown type")
-                    return nil
+                return (dataTypeRef as? Data).flatMap {
+                    String(decoding: $0, as: UTF8.self)
                 }
             } else {
                 throw NSError(

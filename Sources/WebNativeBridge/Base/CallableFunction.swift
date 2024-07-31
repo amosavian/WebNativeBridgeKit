@@ -9,14 +9,14 @@ import Foundation
 import WebKit
 
 public struct FrameInfo: Sendable {
-    public let url: URLRequest
+    public let url: URL?
     public let securityOrigin: URL?
     public let isMainFrame: Bool
     public let webView: WKWebView?
     
     @MainActor
     init(frame: WKFrameInfo) {
-        self.url = frame.request
+        self.url = frame.request.url
         var securityOrigin = URLComponents()
         securityOrigin.scheme = frame.securityOrigin.protocol
         securityOrigin.host = frame.securityOrigin.host
@@ -34,6 +34,14 @@ public struct FunctionContext: Sendable {
     init(webView: WKWebView?, frameInfo: FrameInfo) {
         self.webView = webView
         self.frameInfo = frameInfo
+    }
+    
+    @MainActor
+    public func checkSameSecurityOrigin() -> Bool {
+        guard let mainURL = webView?.url else {
+            return false
+        }
+        return mainURL.host == frameInfo.securityOrigin?.host
     }
 }
 
@@ -146,6 +154,7 @@ extension CallableFunction {
         ContactsFunction.self,
         DeviceFunction.self,
         HapticsFunction.self,
+        SecurityFunction.self,
         ViewFunction.self,
     ]
     
