@@ -8,28 +8,66 @@
 import Foundation
 import WebKit
 
-open class WebBridgeMessageHandler: NSObject, WKScriptMessageHandlerWithReply {
-    @MainActor
-    private static var isCoreFunctionalityRegistered: Bool = false
+@MainActor
+open class WebBridgeMessageHandler: NSObject, WKScriptMessageHandlerWithReply, @unchecked Sendable {
+    public static let shared = WebBridgeMessageHandler(moduleRegistry: .shared)
     
-    @MainActor
+    public let moduleRegistry: ModuleRegistry
+    
+    public init(moduleRegistry: ModuleRegistry) {
+        self.moduleRegistry = moduleRegistry
+    }
+    
     public func userContentController(_: WKUserContentController, didReceive message: WKScriptMessage) async -> (Any?, String?) {
-        guard message.name == "nativeInterface" else {
+        let moduleName = ModuleName(message.name)
+        guard var body = message.body as? [String: any Sendable], let functionName = body["name"] as? String else {
             return (nil, nil)
         }
-        guard let body = message.body as? [String: Any] else {
-            return (nil, nil)
-        }
-        let context = FunctionContext(webView: message.webView, frameInfo: .init(frame: message.frameInfo))
+        _ = body.removeValue(forKey: "name")
+        let arguments = FunctionArguments(uniqueKeysWithValues: body.map { (FunctionArgumentKeyword($0), $1) })
+        
         do {
-            if !WebBridgeMessageHandler.isCoreFunctionalityRegistered {
-                await CallableFunction.registerCoreFunctionalities()
-            }
-            let function = try Function(body)
-            let result = try await CallableFunction.execute(function, context: context)
+            let result = try await ModuleRegistry.shared.execute(
+                context: .init(message),
+                module: moduleName,
+                .init(rawValue: functionName), arguments
+            )
             return (result as AnyObject, nil)
         } catch {
             return (nil, error.localizedDescription)
         }
+    }
+}
+
+extension WKUserContentController {
+    private static let coreModules: [any Module.Type] = [
+        ApplicationModule.self,
+        BiometricModule.self,
+        ContactsModule.self,
+        DeviceModule.self,
+        HapticsModule.self,
+        SecurityModule.self,
+        ViewModule.self,
+    ]
+    
+    @MainActor
+    public func register(module: Module.Type, registry: ModuleRegistry = .shared) {
+        registry.addModule(of: module)
+        let handler: WebBridgeMessageHandler = registry === ModuleRegistry.shared ? .shared : .init(moduleRegistry: registry)
+        addScriptMessageHandler(
+            handler,
+            contentWorld: .defaultClient,
+            name: module.name.rawValue
+        )
+        addUserScript(.init(
+            source: module.registrationScript,
+            injectionTime: .atDocumentStart,
+            forMainFrameOnly: false
+        ))
+    }
+    
+    @MainActor
+    public func registerCoreModules() {
+        Self.coreModules.forEach { register(module: $0) }
     }
 }

@@ -8,13 +8,19 @@
 import Combine
 import Foundation
 
-struct DeviceFunction: CallableFunctionRegistry {
-    static let allFunctions: [FunctionName: FunctionSignature] = [
-        "device.getInfo": deviceInfo,
-        "device.setBrightness": setBrightness,
+extension FunctionArgumentKeyword {
+    fileprivate static let level: Self = level
+}
+
+struct DeviceModule: Module {
+    static let name: ModuleName = "device"
+    
+    static let functions: [FunctionName: FunctionSignature] = [
+        "getInfo": deviceInfo,
+        "setBrightness": setBrightness,
     ]
     
-    static func deviceInfo(_: FunctionContext, _: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+    static func deviceInfo(_: FunctionContext, _: FunctionArguments) async throws -> (any Encodable & Sendable)? {
 #if canImport(UIKit.UIDevice)
         return await DeviceInfo()
 #else
@@ -23,17 +29,15 @@ struct DeviceFunction: CallableFunctionRegistry {
     }
     
     @MainActor
-    static func setBrightness(_: FunctionContext, _ args: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
-#if canImport(UIKit)
-        guard let brightness = (args.first as? CGFloat) else {
+    static func setBrightness(_: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
+        guard let brightness = (kwArgs[.level] as? CGFloat) else {
             return nil
         }
+#if canImport(UIKit)
         let screen = UIApplication.shared.currentScenes.first?.screen ?? UIScreen.main
         screen.brightness = brightness
-        return nil
-#else
-        return nil
 #endif
+        return nil
     }
 }
 
@@ -154,4 +158,70 @@ extension UIUserInterfaceIdiom {
         }
     }
 }
+
+#elseif canImport(AppKit)
+import AppKit
+import IOKit.ps
+
+extension DeviceInfo {
+    @MainActor
+    init() {
+        let info = ProcessInfo.processInfo
+        self.id = UUID().uuidString
+        self.persistedID = UUID().uuidString
+        self.name = info.hostName
+        self.model = DeviceInfo.modelIdentifier() ?? "Unknown"
+        self.osName = "macos"
+        self.osVersion = info.operatingSystemVersionString
+        self.deviceOrientation = "unknown"
+        self.batteryState = "unknown"
+        self.batteryLevel = Self.batteryLevel() ?? 1
+        self.isLowPowerEnabled = false
+        self.proximityState = false
+        self.idiom = "mac"
+        self.processorCount = info.processorCount
+        self.physicalMemory = info.physicalMemory
+        self.systemUptime = info.systemUptime
+        let screen = NSScreen.main
+        self.screenSize = screen?.frame.size ?? .zero
+        self.screenBrightness = 1
+    }
+    
+    private static func modelIdentifier() -> String? {
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPlatformExpertDevice"))
+        defer { IOObjectRelease(service) }
+
+        if let modelData = IORegistryEntryCreateCFProperty(service, "model" as CFString, kCFAllocatorDefault, 0).takeRetainedValue() as? Data {
+            return modelData.withUnsafeBytes { (cString: UnsafeRawBufferPointer) -> String in
+                return String(cString: cString.assumingMemoryBound(to: UInt8.self).baseAddress!)
+            }
+        }
+
+        return nil
+    }
+    
+    private static func batteryLevel() -> Float? {
+        // Take a snapshot of all the power source info
+        let snapshot = IOPSCopyPowerSourcesInfo().takeRetainedValue()
+
+        // Pull out a list of power sources
+        let sources = IOPSCopyPowerSourcesList(snapshot).takeRetainedValue() as Array
+
+        // For each power source...
+        for ps in sources {
+            // Fetch the information for a given power source out of our snapshot
+            let info = IOPSGetPowerSourceDescription(snapshot, ps).takeUnretainedValue() as! [String: AnyObject]
+
+            // Pull out the name and capacity
+            if let name = info[kIOPSNameKey] as? String,
+               let capacity = info[kIOPSCurrentCapacityKey] as? Int,
+               let max = info[kIOPSMaxCapacityKey] as? Int
+            {
+                return Float(Double(capacity) / Double(max))
+            }
+        }
+        return nil
+    }
+}
+
 #endif

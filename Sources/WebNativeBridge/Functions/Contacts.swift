@@ -8,24 +8,30 @@
 import Contacts
 import Foundation
 
-struct ContactsFunction: CallableFunctionRegistry {
-    static let allFunctions: [FunctionName: FunctionSignature] = [
+extension FunctionArgumentKeyword {
+    fileprivate static let vcard: Self = "vcard"
+}
+
+struct ContactsModule: Module {
+    static let name: ModuleName = "contacts"
+    
+    static let functions: [FunctionName: FunctionSignature] = [
         "contacts.getAuthorizationStatus": getAuthorizationStatus,
         "contacts.authorize": authorize,
         "contacts.fetch": fetch,
         "contacts.store": store,
     ]
     
-    static func getAuthorizationStatus(_: FunctionContext, _: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+    static func getAuthorizationStatus(_: FunctionContext, _: FunctionArguments) async throws -> (any Encodable & Sendable)? {
         CNContactStore.authorizationStatus(for: .contacts).name
     }
     
-    static func authorize(_: FunctionContext, _: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable)? {
+    static func authorize(_: FunctionContext, _: FunctionArguments) async throws -> (any Encodable)? {
         let store = CNContactStore()
         return try await store.requestAccess(for: .contacts)
     }
     
-    static func fetch(_: FunctionContext, _: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+    static func fetch(_: FunctionContext, _: FunctionArguments) async throws -> (any Encodable & Sendable)? {
         let keys: [any CNKeyDescriptor] = [
             CNContactIdentifierKey,
             CNContactNamePrefixKey, CNContactGivenNameKey,
@@ -55,8 +61,8 @@ struct ContactsFunction: CallableFunctionRegistry {
         return try CNContactVCardSerialization.data(with: contacts)
     }
     
-    static func store(_: FunctionContext, _ args: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
-        guard let vcard = args.first as? String else {
+    static func store(_: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
+        guard let vcard = kwArgs[.vcard] as? String else {
             return nil
         }
         let contacts = try CNContactVCardSerialization.contacts(with: .init(vcard.utf8))

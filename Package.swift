@@ -5,7 +5,13 @@ import PackageDescription
 
 let package = Package(
     name: "WebNativeBridge",
-    platforms: [.macOS(.v12), .iOS(.v15), .macCatalyst(.v15), .tvOS(.v15), .visionOS(.v1)],
+    platforms: [
+        .custom("macos", versionString: "12.3"),
+        .custom("maccatalyst", versionString: "15.4"),
+        .custom("ios", versionString: "15.4"),
+        .custom("tvos", versionString: "15.4"),
+        .visionOS(.v1),
+    ],
     products: [
         // Products define the executables and libraries a package produces, making them visible to other packages.
         .library(

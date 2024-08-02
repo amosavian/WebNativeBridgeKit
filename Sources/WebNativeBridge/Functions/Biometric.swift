@@ -5,7 +5,6 @@
 //  Created by Amir Abbas Mousavian on 7/16/24.
 //
 
-import AnyCodable
 import Foundation
 import LocalAuthentication
 
@@ -20,17 +19,19 @@ extension FunctionArgumentKeyword {
     fileprivate static let currentUser: Self = "currentUser"
 }
 
-struct BiometricFunction: CallableFunctionRegistry {
-    static let allFunctions: [FunctionName: FunctionSignature] = [
-        "biometrics.type": biometricType,
-        "biometrics.domainState": domainState,
-        "biometrics.canEvalulate": canEvaluate,
-        "biometrics.evaluate": evaluate,
-        "biometrics.setCredential": setCredential,
-        "biometrics.getCredential": getCredential,
+struct BiometricModule: Module {
+    static let name: ModuleName = "biometrics"
+    
+    static let functions: [FunctionName: FunctionSignature] = [
+        "type": biometricType,
+        "domainState": domainState,
+        "canEvalulate": canEvaluate,
+        "evaluate": evaluate,
+        "setCredential": setCredential,
+        "getCredential": getCredential,
     ]
     
-    static func biometricType(_ context: FunctionContext, _: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+    static func biometricType(_ context: FunctionContext, _: FunctionArguments) async throws -> (any Encodable & Sendable)? {
         guard await context.checkSameSecurityOrigin() else { return nil }
         let context = LAContext()
         var error: NSError?
@@ -44,7 +45,7 @@ struct BiometricFunction: CallableFunctionRegistry {
         return context.biometryType.name
     }
     
-    static func domainState(_ context: FunctionContext, _: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+    static func domainState(_ context: FunctionContext, _: FunctionArguments) async throws -> (any Encodable & Sendable)? {
         guard await context.checkSameSecurityOrigin() else { return nil }
         let context = LAContext()
         var error: NSError?
@@ -58,9 +59,9 @@ struct BiometricFunction: CallableFunctionRegistry {
         return context.evaluatedPolicyDomainState
     }
     
-    static func canEvaluate(_ context: FunctionContext, _ args: [Any], _ kwArgs: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+    static func canEvaluate(_ context: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
         guard await context.checkSameSecurityOrigin() else { return nil }
-        let policy = LAPolicy(name: kwArgs[.policy] as? String ?? (args.first as? String))
+        let policy = LAPolicy(name: kwArgs[.policy] as? String)
         
         var error: NSError?
         let result = LAContext().canEvaluatePolicy(policy, error: &error)
@@ -70,16 +71,16 @@ struct BiometricFunction: CallableFunctionRegistry {
         return result
     }
     
-    static func evaluate(_ context: FunctionContext, _ args: [Any], _ kwArgs: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+    static func evaluate(_ context: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
         guard await context.checkSameSecurityOrigin() else { return nil }
-        let policy = LAPolicy(name: kwArgs[.policy] as? String ?? (args.first as? String))
-        let localizedReason = kwArgs[.localizedReason] as? String ?? (args[safe: 1] as? String) ?? ""
+        let policy = LAPolicy(name: kwArgs[.policy] as? String)
+        let localizedReason = kwArgs[.localizedReason] as? String ?? ""
         
         let context = LAContext()
         return try await context.evaluatePolicy(policy, localizedReason: localizedReason)
     }
     
-    static func setCredential(_ context: FunctionContext, _: [any Sendable], _ kwArgs: [FunctionArgumentKeyword: any Sendable]) async throws -> (any Encodable & Sendable)? {
+    static func setCredential(_ context: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
         guard let username = kwArgs[.id] as? String, let credential = kwArgs[.credential] as? String else {
             return nil
         }
@@ -100,7 +101,7 @@ struct BiometricFunction: CallableFunctionRegistry {
         }.value
     }
     
-    static func getCredential(_ context: FunctionContext, _: [Any], _ kwArgs: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+    static func getCredential(_ context: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
         guard let username = kwArgs[.id] as? String else {
             return nil
         }
@@ -138,7 +139,7 @@ struct BiometricFunction: CallableFunctionRegistry {
 }
 
 extension SecAccessControl {
-    static func create(kwArgs: [FunctionArgumentKeyword: Any]) throws -> SecAccessControl {
+    static func create(kwArgs: FunctionArguments) throws -> SecAccessControl {
         let useBiometric = (kwArgs[.useBiometric] as? Bool ?? false)
         let useDevicePin = (kwArgs[.useDevicePin] as? Bool ?? false)
         let currentUser = (kwArgs[.currentUser] as? Bool ?? false)

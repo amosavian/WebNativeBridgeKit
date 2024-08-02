@@ -1,5 +1,5 @@
 //
-//  Secure.swift
+//  Security.swift
 //
 //
 //  Created by Amir Abbas Mousavian on 7/21/24.
@@ -9,11 +9,13 @@ import CryptoKit
 import Foundation
 
 extension FunctionArgumentKeyword {
+    fileprivate static let id: Self = "id"
     fileprivate static let hash: Self = "hash"
     fileprivate static let key: Self = "key"
     fileprivate static let data: Self = "data"
     fileprivate static let digest: Self = "digest"
     fileprivate static let signatureFormat: Self = "signatureFormat"
+    fileprivate static let publicKey: Self = "publicKey"
 }
 
 enum SecurityError: LocalizedError {
@@ -32,18 +34,20 @@ enum TypeError: LocalizedError {
     }
 }
 
-struct SecurityFunction: CallableFunctionRegistry {
-    static var allFunctions: [FunctionName: FunctionSignature] = [
-        "security.getValue": getValueForKey,
-        "secirity.setValue": saveValueForKey,
-        "security.secureEnclaveIsAvailable": isAvailable,
-        "security.generateKeyPair": generateKeyPair,
-        "security.getPublicKey": getPublicKey,
-        "security.keyAgreement": keyAgreement,
-        "security.sign": sign,
+struct SecurityModule: Module {
+    static let name: ModuleName = "security"
+    
+    static var functions: [FunctionName: FunctionSignature] = [
+        "getValue": getValueForKey,
+        "setValue": saveValueForKey,
+        "secureEnclaveIsAvailable": isAvailable,
+        "generateKeyPair": generateKeyPair,
+        "getPublicKey": getPublicKey,
+        "keyAgreement": keyAgreement,
+        "sign": sign,
     ]
 
-    static func getValueForKey(_ context: FunctionContext, _: [Any], _ kwArgs: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+    static func getValueForKey(_ context: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
         guard await context.checkSameSecurityOrigin() else { return nil }
         guard let key = kwArgs[.key] as? String, let service = context.frameInfo.url?.host else {
             return nil
@@ -76,7 +80,7 @@ struct SecurityFunction: CallableFunctionRegistry {
         }.value
     }
     
-    static func saveValueForKey(_ context: FunctionContext, _: [Any], _ kwArgs: [FunctionArgumentKeyword: any Sendable]) async throws -> (any Encodable & Sendable)? {
+    static func saveValueForKey(_ context: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
         guard let key = kwArgs[.key] as? String, let service = context.frameInfo.url?.host, let rawData = kwArgs[.data] else {
             return nil
         }
@@ -108,12 +112,12 @@ struct SecurityFunction: CallableFunctionRegistry {
         }.value
     }
     
-    static func isAvailable(_ context: FunctionContext, _: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+    static func isAvailable(_ context: FunctionContext, _: FunctionArguments) async throws -> (any Encodable & Sendable)? {
         guard await context.checkSameSecurityOrigin() else { return nil }
         return SecureEnclave.isAvailable
     }
     
-    static func generateKeyPair(_ context: FunctionContext, _: [Any], _ kwArgs: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+    static func generateKeyPair(_ context: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
         guard await context.checkSameSecurityOrigin() else { return nil }
         guard SecureEnclave.isAvailable else {
             throw SecurityError.secureEnclaveInaccessible
@@ -138,19 +142,19 @@ struct SecurityFunction: CallableFunctionRegistry {
         return dataRep
     }
     
-    static func getPublicKey(_ context: FunctionContext, _ args: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+    static func getPublicKey(_ context: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
         guard await context.checkSameSecurityOrigin() else { return nil }
-        let key = try data(from: args.first)
+        let key = try data(from: kwArgs[.id])
             .map {
                 try SecureEnclave.P256.KeyAgreement.PrivateKey(dataRepresentation: $0)
             }
         return key?.publicKey.derRepresentation
     }
     
-    static func keyAgreement(_ context: FunctionContext, _ args: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+    static func keyAgreement(_ context: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
         guard await context.checkSameSecurityOrigin() else { return nil }
-        let privateKeyData = data(from: args.first)
-        let publicKeyData = data(from: args[safe: 1])
+        let privateKeyData = data(from: kwArgs[.id])
+        let publicKeyData = data(from: kwArgs[.publicKey])
         
         return try await Task.detached(priority: .userInitiated) {
             let privateKey = try privateKeyData.map {
@@ -168,7 +172,7 @@ struct SecurityFunction: CallableFunctionRegistry {
         }.value
     }
     
-    static func sign(_ context: FunctionContext, _: [Any], _ kwArgs: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+    static func sign(_ context: FunctionContext, _ kwArgs: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
         guard await context.checkSameSecurityOrigin() else { return nil }
         let privateKeyData = data(from: kwArgs[.key])
         let signatureData = data(from: kwArgs[.data])

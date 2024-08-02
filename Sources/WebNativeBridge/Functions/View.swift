@@ -12,22 +12,26 @@ import UIKit
 #endif
 
 extension FunctionArgumentKeyword {
+    fileprivate static let title: Self = "title"
+    fileprivate static let style: Self = "style"
     fileprivate static let elementID: Self = "elementID"
     fileprivate static let format: Self = "format"
     fileprivate static let compressionQuality: Self = "compressionQuality"
 }
 
-struct ViewFunction: CallableFunctionRegistry {
-    static let allFunctions: [FunctionName: FunctionSignature] = [
-        "view.getViewTitle": getViewTitle,
-        "view.setViewTitle": setViewTitle,
-        "view.getStatusbarStyle": getStatusbarStyle,
-        "view.setStatusbarStyle": setStatusbarStyle,
-        "view.getScreenshot": getScreenshot,
+struct ViewModule: Module {
+    static let name: ModuleName = "view"
+    
+    static let functions: [FunctionName: FunctionSignature] = [
+        "getViewTitle": getViewTitle,
+        "setViewTitle": setViewTitle,
+        "getStatusbarStyle": getStatusbarStyle,
+        "setStatusbarStyle": setStatusbarStyle,
+        "getScreenshot": getScreenshot,
     ]
     
     @MainActor
-    static func getViewTitle(_ context: FunctionContext, _: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+    static func getViewTitle(_ context: FunctionContext, _: FunctionArguments) async throws -> (any Encodable & Sendable)? {
 #if canImport(UIKit)
         guard let vc = context.webView?.parentViewController else { return nil }
         return vc.navigationItem.title ?? vc.title
@@ -39,12 +43,13 @@ struct ViewFunction: CallableFunctionRegistry {
     }
     
     @MainActor
-    static func setViewTitle(_ context: FunctionContext, _ args: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
-#if canImport(UIKit)
-        guard let vc = context.webView?.parentViewController else { return nil }
-        guard let title = args.first as? String else {
+    static func setViewTitle(_ context: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
+        guard let title = kwArgs[.title] as? String else {
             return nil
         }
+#if canImport(UIKit)
+        guard let vc = context.webView?.parentViewController else { return nil }
+        
         vc.navigationItem.title = title
         return nil
 #elseif canImport(AppKit)
@@ -55,7 +60,7 @@ struct ViewFunction: CallableFunctionRegistry {
     }
     
     @MainActor
-    static func getStatusbarStyle(_ context: FunctionContext, _: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+    static func getStatusbarStyle(_ context: FunctionContext, _: FunctionArguments) async throws -> (any Encodable & Sendable)? {
 #if canImport(UIKit)
         guard let vc = context.webView?.parentViewController else { return nil }
         
@@ -77,12 +82,12 @@ struct ViewFunction: CallableFunctionRegistry {
     }
     
     @MainActor
-    static func setStatusbarStyle(_ context: FunctionContext, _ args: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
-#if canImport(UIKit)
-        guard let vc = context.webView?.parentViewController as? PreferenceCustomizableViewController else { return nil }
-        guard let style = args.first as? String else {
+    static func setStatusbarStyle(_ context: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
+        guard let style = kwArgs[.style] as? String else {
             return nil
         }
+#if canImport(UIKit)
+        guard let vc = context.webView?.parentViewController as? PreferenceCustomizableViewController else { return nil }
         
         switch style {
         case "none":
@@ -107,7 +112,7 @@ struct ViewFunction: CallableFunctionRegistry {
     }
     
     @MainActor
-    static func getScreenshot(_ context: FunctionContext, _: [Any], _ kwArgs: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+    static func getScreenshot(_ context: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
         guard let webView = context.webView else {
             return nil
         }

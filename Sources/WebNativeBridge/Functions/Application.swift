@@ -12,15 +12,23 @@ import UIKit
 import AppKit
 #endif
 
-struct ApplicationFunction: CallableFunctionRegistry {
-    static let allFunctions: [FunctionName: FunctionSignature] = [
-        "application.getWindowTitle": getWindowTitle,
-        "application.setWindowTitle": setWindowTitle,
-        "application.openURL": openURL,
+extension FunctionArgumentKeyword {
+    fileprivate static let title: Self = "title"
+    fileprivate static let url: Self = "url"
+    fileprivate static let universalLink: Self = "universalLink"
+}
+
+struct ApplicationModule: Module {
+    static let name: ModuleName = "application"
+    
+    static let functions: [FunctionName: FunctionSignature] = [
+        "getWindowTitle": getWindowTitle,
+        "setWindowTitle": setWindowTitle,
+        "openURL": openURL,
     ]
     
     @MainActor
-    static func getWindowTitle(_: FunctionContext, _: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+    static func getWindowTitle(_: FunctionContext, _: FunctionArguments) async throws -> (any Encodable & Sendable)? {
 #if canImport(UIKit)
         return UIApplication.shared.currentScenes.first?.title
 #elseif canImport(AppKit)
@@ -29,21 +37,22 @@ struct ApplicationFunction: CallableFunctionRegistry {
     }
     
     @MainActor
-    static func setWindowTitle(_: FunctionContext, _ args: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+    static func setWindowTitle(_: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
+        guard let title = kwArgs[.title] as? String else { return nil }
 #if canImport(UIKit)
-        UIApplication.shared.currentScenes.first?.title = args.first as? String ?? ""
+        UIApplication.shared.currentScenes.first?.title = title
 #elseif canImport(AppKit)
-        NSApplication.shared.keyWindow?.title = args.first as? String ?? ""
+        NSApplication.shared.keyWindow?.title = title
 #endif
         return nil
     }
     
     @MainActor
-    static func openURL(_: FunctionContext, _ args: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
-        guard let url = (args.first as? String).flatMap(URL.init(string:)) else {
+    static func openURL(_: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
+        guard let url = (kwArgs[.url] as? String).flatMap(URL.init(string:)) else {
             return false
         }
-        let universalLink = args[safe: 1] as? Bool ?? false
+        let universalLink = kwArgs[.universalLink] as? Bool ?? false
 #if canImport(UIKit)
         let options = UIScene.OpenExternalURLOptions()
         options.universalLinksOnly = universalLink

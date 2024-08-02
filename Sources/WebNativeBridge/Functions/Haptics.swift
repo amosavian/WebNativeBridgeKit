@@ -11,27 +11,33 @@ import Foundation
 import UIKit
 #endif
 
+extension FunctionName {
+    fileprivate static let haptic: Self = "haptic"
+    fileprivate static let vibrate: Self = "vibrate"
+}
+
 extension FunctionArgumentKeyword {
     fileprivate static let type: Self = "type"
     fileprivate static let style: Self = "style"
     fileprivate static let notificationType: Self = "notificationType"
 }
 
-struct HapticsFunction: CallableFunctionRegistry {
+struct HapticsModule: Module {
+    static let name: ModuleName = "haptics"
 #if canImport(UIKit.UIFeedbackGenerator)
-    static let allFunctions: [FunctionName: FunctionSignature] = [
-        "haptics.haptic": haptic,
-        "haptics.vibrate": vibrate,
+    static let functions: [FunctionName: FunctionSignature] = [
+        .haptic: haptic,
+        .vibrate: vibrate,
     ]
 #else
-    static let allFunctions: [FunctionName: FunctionSignature] = [
-        "haptics.vibrate": vibrate,
+    static let functions: [FunctionName: FunctionSignature] = [
+        .vibrate: vibrate,
     ]
 #endif
     
 #if canImport(UIKit.UIFeedbackGenerator)
     @MainActor
-    static func haptic(_: FunctionContext, _: [Any], _ kwArgs: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+    static func haptic(_: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
         switch kwArgs[.type] as? String {
         case "impact":
             let feedback = UIImpactFeedbackGenerator(style: .init(name: kwArgs[.style] as? String))
@@ -53,7 +59,7 @@ struct HapticsFunction: CallableFunctionRegistry {
     static var engine: CHHapticEngine?
     
     @MainActor
-    static func vibrate(_: FunctionContext, _ args: [Any], _: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+    static func vibrate(_: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
         guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else {
             return nil
         }
@@ -74,7 +80,7 @@ struct HapticsFunction: CallableFunctionRegistry {
             }
         }
         
-        guard let arg = args.first else { return nil }
+        guard let arg = kwArgs.values.first else { return nil }
         var events: [CHHapticEvent] = []
         switch arg {
         case let durations as [NSNumber]:
