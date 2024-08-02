@@ -16,7 +16,7 @@ extension FunctionName {
     fileprivate static let vibrate: Self = "vibrate"
 }
 
-extension FunctionArgumentKeyword {
+extension FunctionArgumentName {
     fileprivate static let type: Self = "type"
     fileprivate static let style: Self = "style"
     fileprivate static let notificationType: Self = "notificationType"

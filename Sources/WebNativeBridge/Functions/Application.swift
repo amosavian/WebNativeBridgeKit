@@ -12,7 +12,7 @@ import UIKit
 import AppKit
 #endif
 
-extension FunctionArgumentKeyword {
+extension FunctionArgumentName {
     fileprivate static let title: Self = "title"
     fileprivate static let url: Self = "url"
     fileprivate static let universalLink: Self = "universalLink"

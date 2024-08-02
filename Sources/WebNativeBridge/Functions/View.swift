@@ -11,7 +11,7 @@ import WebKit
 import UIKit
 #endif
 
-extension FunctionArgumentKeyword {
+extension FunctionArgumentName {
     fileprivate static let title: Self = "title"
     fileprivate static let style: Self = "style"
     fileprivate static let elementID: Self = "elementID"

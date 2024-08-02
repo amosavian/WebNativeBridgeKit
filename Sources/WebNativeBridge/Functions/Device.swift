@@ -8,7 +8,7 @@
 import Combine
 import Foundation
 
-extension FunctionArgumentKeyword {
+extension FunctionArgumentName {
     fileprivate static let level: Self = level
 }
 
@@ -213,8 +213,7 @@ extension DeviceInfo {
             let info = IOPSGetPowerSourceDescription(snapshot, ps).takeUnretainedValue() as! [String: AnyObject]
 
             // Pull out the name and capacity
-            if let name = info[kIOPSNameKey] as? String,
-               let capacity = info[kIOPSCurrentCapacityKey] as? Int,
+            if let capacity = info[kIOPSCurrentCapacityKey] as? Int,
                let max = info[kIOPSMaxCapacityKey] as? Int
             {
                 return Float(Double(capacity) / Double(max))

@@ -8,7 +8,7 @@
 import Foundation
 import LocalAuthentication
 
-extension FunctionArgumentKeyword {
+extension FunctionArgumentName {
     fileprivate static let policy: Self = "policy"
     fileprivate static let localizedReason: Self = "localizedReason"
     fileprivate static let id: Self = "id"

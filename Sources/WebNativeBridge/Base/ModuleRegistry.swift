@@ -8,53 +8,38 @@
 import Foundation
 import WebKit
 
-public struct FrameInfo: Sendable {
-    public let url: URL?
-    public let securityOrigin: URL?
-    public let isMainFrame: Bool
-    public let webView: WKWebView?
-    
-    init(frame: WKFrameInfo) {
-        self.url = frame.request.url
-        self.securityOrigin = frame.securityOrigin.url
-        self.isMainFrame = frame.isMainFrame
-        self.webView = frame.webView
-    }
-}
-
-public struct FunctionContext: Sendable {
-    public let webView: WKWebView?
-    public let frameInfo: FrameInfo
-    
-    init(webView: WKWebView?, frameInfo: FrameInfo) {
-        self.webView = webView
-        self.frameInfo = frameInfo
-    }
-    
-    init(_ message: WKScriptMessage) {
-        self.webView = message.webView
-        self.frameInfo = .init(frame: message.frameInfo)
-    }
-    
-    @MainActor
-    public func checkSameSecurityOrigin() -> Bool {
-        guard let mainURL = webView?.url else {
-            return false
-        }
-        return mainURL.host == frameInfo.securityOrigin?.host
-    }
-}
-
 public protocol Module {
     static var name: ModuleName { get }
     
+    @MainActor
     static var registrationScript: String { get }
     
+    @MainActor
     static var functions: [FunctionName: FunctionSignature] { get }
 }
 
+@frozen
+public struct ModuleName: StringRepresentable {
+    public let rawValue: String
+    
+    public init(rawValue: String) {
+        self.rawValue = rawValue
+    }
+}
+
 extension Module {
-    public static var registrationScript: String { "" }
+    @MainActor
+    public static var registrationScript: String {
+        var result = ""
+        for functionName in functions.keys {
+            result += """
+            function \(functionName)(args) {
+                window.webkit.messageHandlers.\(name).postMessage({"name": \(functionName), ...args});
+            };
+            """
+        }
+        return result
+    }
 }
 
 @MainActor
@@ -94,15 +79,5 @@ extension Collection {
             return nil
         }
         return self[position]
-    }
-}
-
-extension WKSecurityOrigin {
-    public var url: URL? {
-        var securityOrigin = URLComponents()
-        securityOrigin.scheme = self.protocol
-        securityOrigin.host = host
-        securityOrigin.port = port
-        return securityOrigin.url
     }
 }

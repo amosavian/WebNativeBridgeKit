@@ -8,7 +8,7 @@
 import Contacts
 import Foundation
 
-extension FunctionArgumentKeyword {
+extension FunctionArgumentName {
     fileprivate static let vcard: Self = "vcard"
 }
 

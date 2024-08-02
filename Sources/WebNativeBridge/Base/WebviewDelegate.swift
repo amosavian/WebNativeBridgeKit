@@ -24,7 +24,7 @@ open class WebBridgeMessageHandler: NSObject, WKScriptMessageHandlerWithReply, @
             return (nil, nil)
         }
         _ = body.removeValue(forKey: "name")
-        let arguments = FunctionArguments(uniqueKeysWithValues: body.map { (FunctionArgumentKeyword($0), $1) })
+        let arguments = FunctionArguments(uniqueKeysWithValues: body.map { (FunctionArgumentName($0), $1) })
         
         do {
             let result = try await ModuleRegistry.shared.execute(
@@ -70,4 +70,18 @@ extension WKUserContentController {
     public func registerCoreModules() {
         Self.coreModules.forEach { register(module: $0) }
     }
+}
+
+extension WKWebViewConfiguration {
+    @MainActor
+    static let shared: WKWebViewConfiguration = {
+        let result = WKWebViewConfiguration()
+        #if canImport(UIKit)
+        result.allowsInlineMediaPlayback = true
+        #endif
+        result.mediaTypesRequiringUserActionForPlayback = []
+        result.preferences.javaScriptCanOpenWindowsAutomatically = true
+        result.userContentController.registerCoreModules()
+        return result
+    }()
 }

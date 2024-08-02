@@ -8,7 +8,7 @@
 import CryptoKit
 import Foundation
 
-extension FunctionArgumentKeyword {
+extension FunctionArgumentName {
     fileprivate static let id: Self = "id"
     fileprivate static let hash: Self = "hash"
     fileprivate static let key: Self = "key"
@@ -37,7 +37,7 @@ enum TypeError: LocalizedError {
 struct SecurityModule: Module {
     static let name: ModuleName = "security"
     
-    static var functions: [FunctionName: FunctionSignature] = [
+    static let functions: [FunctionName: FunctionSignature] = [
         "getValue": getValueForKey,
         "setValue": saveValueForKey,
         "secureEnclaveIsAvailable": isAvailable,
@@ -172,7 +172,7 @@ struct SecurityModule: Module {
         }.value
     }
     
-    static func sign(_ context: FunctionContext, _ kwArgs: [FunctionArgumentKeyword: Any]) async throws -> (any Encodable & Sendable)? {
+    static func sign(_ context: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
         guard await context.checkSameSecurityOrigin() else { return nil }
         let privateKeyData = data(from: kwArgs[.key])
         let signatureData = data(from: kwArgs[.data])
