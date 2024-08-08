@@ -5,6 +5,7 @@
 //  Created by Amir Abbas Mousavian on 7/17/24.
 //
 
+import CoreGraphics
 import Foundation
 import WebKit
 #if canImport(UIKit)
@@ -21,6 +22,22 @@ extension FunctionArgumentName {
 
 struct ViewModule: Module {
     static let name: ModuleName = "view"
+    
+#if canImport(UIKit)
+    @MainActor
+    static let events: [EventName: EventPublisher] = [
+        "keyboardWillShow": NotificationCenter.default
+            .webEvent(
+                for: UIResponder.keyboardWillShowNotification, \.mapKeyboardParams
+            ),
+        "keyboardDidShow": NotificationCenter.default
+            .webEvent(for: UIResponder.keyboardDidShowNotification, \.mapKeyboardParams),
+        "keyboardWillHide": NotificationCenter.default
+            .webEvent(for: UIResponder.keyboardWillHideNotification, \.mapKeyboardParams),
+        "keyboardDidHide": NotificationCenter.default
+            .webEvent(for: UIResponder.keyboardDidHideNotification, \.mapKeyboardParams),
+    ]
+#endif
     
     static let functions: [FunctionName: FunctionSignature] = [
         "getViewTitle": getViewTitle,
@@ -227,3 +244,47 @@ extension WKWebView {
 #endif
     }
 }
+
+extension CGRect {
+    var dictionary: [String: Double] {
+        [
+            "x": origin.x,
+            "y": origin.y,
+            "width": width,
+            "height": height,
+        ]
+    }
+}
+
+#if canImport(UIKit)
+extension UIView.AnimationCurve {
+    var string: String {
+        switch self {
+        case .easeInOut:
+            "ease-in-out"
+        case .easeIn:
+            "ease-in"
+        case .easeOut:
+            "ease-out"
+        case .linear:
+            "linear"
+        @unknown default:
+            "linear"
+        }
+    }
+}
+
+extension [AnyHashable: Any] {
+    var mapKeyboardParams: [String: any Encodable & Sendable]? {
+        MainActor.assumeIsolated {
+            [
+                "beginFrame": (self[UIView.keyboardFrameBeginUserInfoKey] as? NSValue)?.cgRectValue.dictionary,
+                "endFrame": (self[UIView.keyboardFrameBeginUserInfoKey] as? NSValue)?.cgRectValue.dictionary,
+                "duration": (self[UIView.keyboardAnimationDurationUserInfoKey] as? Double),
+                "curve": (self[UIView.keyboardAnimationDurationUserInfoKey] as? Int)
+                    .flatMap(UIView.AnimationCurve.init(rawValue:))?.string,
+            ]
+        }
+    }
+}
+#endif

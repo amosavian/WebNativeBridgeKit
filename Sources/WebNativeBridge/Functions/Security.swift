@@ -14,6 +14,7 @@ extension FunctionArgumentName {
     fileprivate static let key: Self = "key"
     fileprivate static let data: Self = "data"
     fileprivate static let digest: Self = "digest"
+    fileprivate static let synchronizable: Self = "synchronizable"
     fileprivate static let signatureFormat: Self = "signatureFormat"
     fileprivate static let publicKey: Self = "publicKey"
 }

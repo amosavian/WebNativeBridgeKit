@@ -24,6 +24,7 @@ extension FunctionArgumentName {
 
 struct HapticsModule: Module {
     static let name: ModuleName = "haptics"
+    
 #if canImport(UIKit.UIFeedbackGenerator)
     static let functions: [FunctionName: FunctionSignature] = [
         .haptic: haptic,

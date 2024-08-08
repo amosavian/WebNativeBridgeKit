@@ -51,8 +51,8 @@ extension WKUserContentController {
     ]
     
     @MainActor
-    public func register(module: Module.Type, registry: ModuleRegistry = .shared) {
-        registry.addModule(of: module)
+    public func registerFunctions(module: Module.Type, registry: ModuleRegistry = .shared) {
+        registry.add(module: module)
         let handler: WebBridgeMessageHandler = registry === ModuleRegistry.shared ? .shared : .init(moduleRegistry: registry)
         addScriptMessageHandler(
             handler,
@@ -67,21 +67,66 @@ extension WKUserContentController {
     }
     
     @MainActor
-    public func registerCoreModules() {
-        Self.coreModules.forEach { register(module: $0) }
+    public func registerCoreModulesFunctions() {
+        Self.coreModules.forEach { registerFunctions(module: $0) }
     }
 }
 
 extension WKWebViewConfiguration {
     @MainActor
-    static let shared: WKWebViewConfiguration = {
+    public static func inline() -> WKWebViewConfiguration {
         let result = WKWebViewConfiguration()
-        #if canImport(UIKit)
+#if canImport(UIKit)
         result.allowsInlineMediaPlayback = true
-        #endif
+#endif
         result.mediaTypesRequiringUserActionForPlayback = []
         result.preferences.javaScriptCanOpenWindowsAutomatically = true
-        result.userContentController.registerCoreModules()
+        result.userContentController.registerCoreModulesFunctions()
         return result
-    }()
+    }
 }
+
+#if canImport(UIKit)
+extension WKWebView {
+    @MainActor
+    private func updateKeyboard(_ notification: Notification) {
+        guard let frame = (notification.userInfo?[UIView.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue else { return }
+        CATransaction.begin()
+        let keyboardTiming = CAMediaTimingFunction(controlPoints: 0.380, 0.700, 0.125, 1.000)
+        CATransaction.setAnimationTimingFunction(keyboardTiming)
+        setMinimumViewportInset(
+            .init(
+                top: 0, left: 0,
+                bottom: frame.height, right: 0),
+            maximumViewportInset: .init(
+                top: 0, left: 0,
+                bottom: frame.height, right: 0))
+        CATransaction.commit()
+    }
+    
+    @MainActor
+    public func observeKeyboard() {
+        NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardWillShowNotification,
+            object: nil, queue: .main) { notification in
+                MainActor.assumeIsolated { [weak self] in
+                    self?.updateKeyboard(notification)
+                }
+            }
+        NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardWillHideNotification,
+            object: nil, queue: .main) { notification in
+                MainActor.assumeIsolated { [weak self] in
+                    self?.updateKeyboard(notification)
+                }
+            }
+        NotificationCenter.default.addObserver(
+            forName: UIResponder.keyboardWillChangeFrameNotification,
+            object: nil, queue: .main) { notification in
+                MainActor.assumeIsolated { [weak self] in
+                    self?.updateKeyboard(notification)
+                }
+            }
+    }
+}
+#endif

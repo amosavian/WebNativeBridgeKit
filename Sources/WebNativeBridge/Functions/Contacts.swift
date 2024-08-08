@@ -15,11 +15,16 @@ extension FunctionArgumentName {
 struct ContactsModule: Module {
     static let name: ModuleName = "contacts"
     
+    @MainActor
+    static let events: [EventName: EventPublisher] = [
+        "didChange": NotificationCenter.default.webEvent(for: .CNContactStoreDidChange),
+    ]
+    
     static let functions: [FunctionName: FunctionSignature] = [
-        "contacts.getAuthorizationStatus": getAuthorizationStatus,
-        "contacts.authorize": authorize,
-        "contacts.fetch": fetch,
-        "contacts.store": store,
+        "getAuthorizationStatus": getAuthorizationStatus,
+        "authorize": authorize,
+        "fetch": fetch,
+        "store": store,
     ]
     
     static func getAuthorizationStatus(_: FunctionContext, _: FunctionArguments) async throws -> (any Encodable & Sendable)? {

@@ -6,10 +6,10 @@ import PackageDescription
 let package = Package(
     name: "WebNativeBridge",
     platforms: [
-        .custom("macos", versionString: "12.3"),
-        .custom("maccatalyst", versionString: "15.4"),
-        .custom("ios", versionString: "15.4"),
-        .custom("tvos", versionString: "15.4"),
+        .custom("macos", versionString: "13"),
+        .custom("maccatalyst", versionString: "15.5"),
+        .custom("ios", versionString: "15.5"),
+        .custom("tvos", versionString: "15.5"),
         .visionOS(.v1),
     ],
     products: [

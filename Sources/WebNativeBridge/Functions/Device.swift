@@ -5,7 +5,6 @@
 //  Created by Amir Abbas Mousavian on 7/17/24.
 //
 
-import Combine
 import Foundation
 
 extension FunctionArgumentName {
@@ -15,17 +14,24 @@ extension FunctionArgumentName {
 struct DeviceModule: Module {
     static let name: ModuleName = "device"
     
+#if canImport(UIKit)
+    @MainActor
+    static let events: [EventName: EventPublisher] = [
+        "batteryLevelDidChange": NotificationCenter.default.webEvent(for: UIDevice.batteryLevelDidChangeNotification),
+        "batteryStateDidChange": NotificationCenter.default.webEvent(for: UIDevice.batteryStateDidChangeNotification),
+        "brightnessDidChange": NotificationCenter.default.webEvent(for: UIScreen.brightnessDidChangeNotification),
+        "proximityStateDidChange": NotificationCenter.default.webEvent(for: UIDevice.proximityStateDidChangeNotification),
+    ]
+#endif
+    
     static let functions: [FunctionName: FunctionSignature] = [
         "getInfo": deviceInfo,
         "setBrightness": setBrightness,
+        "enableMonitoring": enableMonitoring,
     ]
     
     static func deviceInfo(_: FunctionContext, _: FunctionArguments) async throws -> (any Encodable & Sendable)? {
-#if canImport(UIKit.UIDevice)
-        return await DeviceInfo()
-#else
-        return nil
-#endif
+        await DeviceInfo()
     }
     
     @MainActor
@@ -36,6 +42,15 @@ struct DeviceModule: Module {
 #if canImport(UIKit)
         let screen = UIApplication.shared.currentScenes.first?.screen ?? UIScreen.main
         screen.brightness = brightness
+#endif
+        return nil
+    }
+    
+    @MainActor
+    static func enableMonitoring(_: FunctionContext, _: FunctionArguments) async throws -> (any Encodable & Sendable)? {
+#if canImport(UIKit)
+        UIDevice.current.isBatteryMonitoringEnabled = true
+        UIDevice.current.isProximityMonitoringEnabled = true
 #endif
         return nil
     }

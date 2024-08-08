@@ -16,10 +16,6 @@ extension StringRepresentable {
         rawValue
     }
     
-    public var codingKey: String {
-        rawValue
-    }
-    
     public init(stringLiteral value: String) {
         self.init(rawValue: value)
     }

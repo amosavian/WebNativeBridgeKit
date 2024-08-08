@@ -8,16 +8,6 @@
 import Foundation
 import WebKit
 
-public protocol Module {
-    static var name: ModuleName { get }
-    
-    @MainActor
-    static var registrationScript: String { get }
-    
-    @MainActor
-    static var functions: [FunctionName: FunctionSignature] { get }
-}
-
 @frozen
 public struct ModuleName: StringRepresentable {
     public let rawValue: String
@@ -27,18 +17,33 @@ public struct ModuleName: StringRepresentable {
     }
 }
 
+public protocol Module {
+    static var name: ModuleName { get }
+    
+    @MainActor
+    static var registrationScript: String { get }
+    
+    @MainActor
+    static var events: [EventName: EventPublisher] { get }
+
+    @MainActor
+    static var functions: [FunctionName: FunctionSignature] { get }
+}
+
 extension Module {
     @MainActor
+    static var events: [EventName: EventPublisher] { [:] }
+    
+    @MainActor
     public static var registrationScript: String {
-        var result = ""
-        for functionName in functions.keys {
-            result += """
-            function \(functionName)(args) {
+        let functionsList = functions.keys.map { functionName in
+            """
+            \(functionName): function (args) {
                 window.webkit.messageHandlers.\(name).postMessage({"name": \(functionName), ...args});
-            };
+            }
             """
         }
-        return result
+        return "let \(name) = {" + functionsList.joined(separator: ",\n") + "}"
     }
 }
 
@@ -46,27 +51,27 @@ extension Module {
 public final class ModuleRegistry {
     public static let shared = ModuleRegistry()
     
-    private var registries: [ModuleName: [FunctionName: FunctionSignature]] = [:]
+    private var functionRegistries: [ModuleName: [FunctionName: FunctionSignature]] = [:]
     
-    public func addFunction(module: ModuleName, name: FunctionName, body: @escaping FunctionSignature) {
-        if registries.keys.contains(module) {
-            registries[module]![name] = body
+    public func add(function name: FunctionName, in module: ModuleName, body: @escaping FunctionSignature) {
+        if functionRegistries.keys.contains(module) {
+            functionRegistries[module]![name] = body
         } else {
-            registries[module] = [name: body]
+            functionRegistries[module] = [name: body]
         }
     }
     
-    public func addModule(of module: Module.Type) {
-        assert(!registries.keys.contains(module.name))
-        registries[module.name] = module.functions
+    public func add(module: Module.Type) {
+        assert(!functionRegistries.keys.contains(module.name))
+        functionRegistries[module.name] = module.functions
     }
     
-    public func removeFunction(_ name: FunctionName, from moduleName: ModuleName) {
-        registries[moduleName]?.removeValue(forKey: name)
+    public func remove(function name: FunctionName, from moduleName: ModuleName) {
+        functionRegistries[moduleName]?.removeValue(forKey: name)
     }
     
     public func execute(context: FunctionContext, module: ModuleName, _ name: FunctionName, _ args: FunctionArguments) async throws -> (any Encodable & Sendable)? {
-        guard let body = registries[module]?[name] else {
+        guard let body = functionRegistries[module]?[name] else {
             return nil
         }
         return try await body(context, args)

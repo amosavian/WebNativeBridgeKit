@@ -10,42 +10,70 @@ import Combine
 import Foundation
 import WebKit
 
-@MainActor
-final class EventManager {
-    private var _webViews: NSHashTable<WKWebView>
+@frozen
+public struct EventName: StringRepresentable {
+    public let rawValue: String
     
-    var webViews: Set<WKWebView> {
-        Set(_webViews.allObjects)
+    public init(rawValue: String) {
+        self.rawValue = rawValue
+    }
+}
+
+private nonisolated(unsafe) var cancellablesHandle: UInt8 = 0
+
+private class CancellableContainer: NSObject {
+    var storedCancellables: Set<AnyCancellable>
+    
+    init(_ value: Set<AnyCancellable>) {
+        self.storedCancellables = value
+    }
+}
+
+extension WKWebView {
+    var storedCancellables: Set<AnyCancellable> {
+        get {
+            (objc_getAssociatedObject(self, &cancellablesHandle) as? CancellableContainer)?.storedCancellables ?? []
+        }
+        set {
+            objc_setAssociatedObject(self, &cancellablesHandle, CancellableContainer(newValue), .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
+        }
     }
     
-    init() {
-        self._webViews = .init(options: .weakMemory)
-    }
-    
-    func append(_ webView: WKWebView) {
-        _webViews.add(webView)
-    }
-    
-    func post(event: CustomEvent) async throws {
-        for webView in webViews {
-            _ = try await webView.evaluateJavaScript(event.dispatchScript())
+    @MainActor
+    public func registerEvents(module: Module.Type) {
+        for (key, value) in module.events {
+            value
+                .sink { @MainActor [weak self] details in
+                    let detailsCodable = AnyCodable(details)
+                    let detailsValue = try! String(decoding: JSONEncoder().encode(detailsCodable), as: UTF8.self)
+                    let script =
+                        """
+                        customEvent = new CustomEvent("\(module.name).\(key)", {
+                          details: \(detailsValue),
+                        });
+                        element.dispatchEvent(customEvent);
+                        customEvent = null;
+                        """
+                    self?.evaluateJavaScript(script)
+                }
+                .store(in: &storedCancellables)
         }
     }
 }
 
-struct CustomEvent: Sendable {
-    let name: String
-    let details: [String: any Encodable & Sendable]
-    
-    func dispatchScript() -> String {
-        let detailsCodable = AnyCodable(details)
-        let detail = try! String(decoding: JSONEncoder().encode(detailsCodable), as: UTF8.self)
-        return """
-        customEvent = new CustomEvent("nativeInterface.\(name)", {
-          detail: \(detail),
-        });
-        element.dispatchEvent(customEvent);
-        customEvent = null;
-        """
+public typealias EventPublisher = AnyPublisher<[String: any Encodable & Sendable]?, Never>
+
+extension NotificationCenter {
+    func webEvent(
+        for name: Notification.Name,
+        _ userInfoHandler: (([AnyHashable: Any]) -> EventPublisher.Output)? = nil
+    ) -> EventPublisher {
+        NotificationCenter.default
+            .publisher(for: name)
+            .receive(on: DispatchQueue.main)
+            .map { notification -> EventPublisher.Output in
+                userInfoHandler?(notification.userInfo ?? [:])
+            }
+            .eraseToAnyPublisher()
     }
 }

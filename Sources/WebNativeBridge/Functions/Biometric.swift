@@ -13,7 +13,7 @@ extension FunctionArgumentName {
     fileprivate static let localizedReason: Self = "localizedReason"
     fileprivate static let id: Self = "id"
     fileprivate static let credential: Self = "credential"
-    static let synchronizable: Self = "synchronizable"
+    fileprivate static let synchronizable: Self = "synchronizable"
     fileprivate static let useBiometric: Self = "useBiometric"
     fileprivate static let useDevicePin: Self = "useDevicePin"
     fileprivate static let currentUser: Self = "currentUser"
