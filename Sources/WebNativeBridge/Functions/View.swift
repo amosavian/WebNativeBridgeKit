@@ -10,6 +10,8 @@ import Foundation
 import WebKit
 #if canImport(UIKit)
 import UIKit
+#elseif canImport(AppKit)
+import AppKit
 #endif
 
 extension FunctionArgumentName {
@@ -149,7 +151,7 @@ struct ViewModule: Module {
             return image.jpegData(compressionQuality: compressionQuality)
         case "image/heic":
 #if canImport(UIKit)
-            if #available(iOS 17.0, *) {
+            if #available(iOS 17.0, macCatalyst 17.0, tvOS 17.0, visionOS 1.0, *) {
                 return image.heicData()
             }
 #endif
@@ -162,7 +164,7 @@ struct ViewModule: Module {
     }
 }
 
-#if canImport(AppKit)
+#if !canImport(UIKit) && canImport(AppKit)
 extension NSImage {
     func pngData() -> Data? {
         (representations.first as? NSBitmapImageRep)?.representation(using: .png, properties: [:])
@@ -223,28 +225,6 @@ extension UIView {
 }
 #endif
 
-extension WKWebView {
-    @MainActor
-    func rectOfElement(id: String) async throws -> CGRect? {
-        let js = """
-        function f() {
-            var r = document.getElementById('\(id)').getBoundingClientRect();
-            if (r) {
-                return '{{'+r.left+','+r.top+'},{'+r.width+','+r.height+'}}';
-            }
-            return null;
-        }
-        f();
-        """
-        let rect = try await evaluateJavaScript(js) as? String
-#if canImport(UIKit)
-        return rect.map(NSCoder.cgRect(for:))
-#else
-        return nil
-#endif
-    }
-}
-
 extension CGRect {
     var dictionary: [String: Double] {
         [
@@ -253,6 +233,14 @@ extension CGRect {
             "width": width,
             "height": height,
         ]
+    }
+    
+    init(from dictionary: [String: Double]) {
+        let x = dictionary["x"] ?? 0
+        let y = dictionary["y"] ?? 0
+        let width = dictionary["width"] ?? 0
+        let height = dictionary["height"] ?? 0
+        self.init(x: x, y: y, width: width, height: height)
     }
 }
 

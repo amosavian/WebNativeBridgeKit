@@ -19,6 +19,7 @@ extension FunctionName {
 extension FunctionArgumentName {
     fileprivate static let type: Self = "type"
     fileprivate static let style: Self = "style"
+    fileprivate static let intensity: Self = "intensity"
     fileprivate static let notificationType: Self = "notificationType"
 }
 
@@ -42,7 +43,11 @@ struct HapticsModule: Module {
         switch kwArgs[.type] as? String {
         case "impact":
             let feedback = UIImpactFeedbackGenerator(style: .init(name: kwArgs[.style] as? String))
-            feedback.impactOccurred()
+            if let intensity = kwArgs[.intensity] as? Double {
+                feedback.impactOccurred(intensity: intensity)
+            } else {
+                feedback.impactOccurred()
+            }
         case "selection":
             let feedback = UISelectionFeedbackGenerator()
             feedback.selectionChanged()

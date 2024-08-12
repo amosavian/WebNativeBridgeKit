@@ -21,6 +21,31 @@ extension FunctionArgumentName {
 struct ApplicationModule: Module {
     static let name: ModuleName = "application"
     
+#if canImport(UIKit)
+    @MainActor
+    static let events: [EventName: EventPublisher] = [
+        "userDidTakeScreenshot": NotificationCenter.default.webEvent(for: UIApplication.userDidTakeScreenshotNotification),
+        "pasteboardChanged": NotificationCenter.default.webEvent(for: UIPasteboard.changedNotification),
+        "systemTimeZoneDidChange": NotificationCenter.default.webEvent(for: Notification.Name.NSSystemTimeZoneDidChange),
+        "systemClockDidChange": NotificationCenter.default.webEvent(for: Notification.Name.NSSystemClockDidChange),
+        "calendarDayChanged": NotificationCenter.default.webEvent(for: Notification.Name.NSCalendarDayChanged),
+    ]
+#elseif canImport(AppKit)
+    @MainActor
+    static let events: [EventName: EventPublisher] = [
+        "pasteboardChanged": NSPasteboard.general
+            .publisher(for: \.changeCount)
+            .receive(on: DispatchQueue.main)
+            .map { _ -> EventPublisher.Output in
+                [:]
+            }
+            .eraseToAnyPublisher(),
+        "systemTimeZoneDidChange": NotificationCenter.default.webEvent(for: Notification.Name.NSSystemTimeZoneDidChange),
+        "systemClockDidChange": NotificationCenter.default.webEvent(for: Notification.Name.NSSystemClockDidChange),
+        "calendarDayChanged": NotificationCenter.default.webEvent(for: Notification.Name.NSCalendarDayChanged),
+    ]
+#endif
+    
     static let functions: [FunctionName: FunctionSignature] = [
         "getWindowTitle": getWindowTitle,
         "setWindowTitle": setWindowTitle,

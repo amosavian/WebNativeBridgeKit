@@ -41,6 +41,7 @@ open class WebBridgeMessageHandler: NSObject, WKScriptMessageHandlerWithReply, @
 
 extension WKUserContentController {
     private static let coreModules: [any Module.Type] = [
+        AccessibilityModule.self,
         ApplicationModule.self,
         BiometricModule.self,
         ContactsModule.self,
@@ -86,6 +87,27 @@ extension WKWebViewConfiguration {
     }
 }
 
+extension WKWebView {
+    @MainActor
+    func rectOfElement(id: String) async throws -> CGRect? {
+        let js = """
+        function f() {
+            var r = document.getElementById('\(id)').getBoundingClientRect();
+            if (r) {
+                return '{"x": '+r.x+',"y": '+r.y+',"width": '+r.width+',"height": '+r.height+'}';
+            }
+            return null;
+        }
+        f();
+        """
+        guard let rectString = try await evaluateJavaScript(js) as? String else {
+            return nil
+        }
+        let rectDictionary = try JSONDecoder().decode([String: Double].self, from: .init(rectString.utf8))
+        return .init(from: rectDictionary)
+    }
+}
+
 #if canImport(UIKit)
 extension WKWebView {
     @MainActor
@@ -97,10 +119,13 @@ extension WKWebView {
         setMinimumViewportInset(
             .init(
                 top: 0, left: 0,
-                bottom: frame.height, right: 0),
+                bottom: frame.height, right: 0
+            ),
             maximumViewportInset: .init(
                 top: 0, left: 0,
-                bottom: frame.height, right: 0))
+                bottom: frame.height, right: 0
+            )
+        )
         CATransaction.commit()
     }
     
@@ -108,25 +133,28 @@ extension WKWebView {
     public func observeKeyboard() {
         NotificationCenter.default.addObserver(
             forName: UIResponder.keyboardWillShowNotification,
-            object: nil, queue: .main) { notification in
-                MainActor.assumeIsolated { [weak self] in
-                    self?.updateKeyboard(notification)
-                }
+            object: nil, queue: .main
+        ) { notification in
+            MainActor.assumeIsolated { [weak self] in
+                self?.updateKeyboard(notification)
             }
+        }
         NotificationCenter.default.addObserver(
             forName: UIResponder.keyboardWillHideNotification,
-            object: nil, queue: .main) { notification in
-                MainActor.assumeIsolated { [weak self] in
-                    self?.updateKeyboard(notification)
-                }
+            object: nil, queue: .main
+        ) { notification in
+            MainActor.assumeIsolated { [weak self] in
+                self?.updateKeyboard(notification)
             }
+        }
         NotificationCenter.default.addObserver(
             forName: UIResponder.keyboardWillChangeFrameNotification,
-            object: nil, queue: .main) { notification in
-                MainActor.assumeIsolated { [weak self] in
-                    self?.updateKeyboard(notification)
-                }
+            object: nil, queue: .main
+        ) { notification in
+            MainActor.assumeIsolated { [weak self] in
+                self?.updateKeyboard(notification)
             }
+        }
     }
 }
 #endif

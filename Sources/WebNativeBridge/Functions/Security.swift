@@ -41,7 +41,7 @@ struct SecurityModule: Module {
     static let functions: [FunctionName: FunctionSignature] = [
         "getValue": getValueForKey,
         "setValue": saveValueForKey,
-        "secureEnclaveIsAvailable": isAvailable,
+        "secureEnclaveIsAvailable": secureEnclaveIsAvailable,
         "generateKeyPair": generateKeyPair,
         "getPublicKey": getPublicKey,
         "keyAgreement": keyAgreement,
@@ -113,7 +113,7 @@ struct SecurityModule: Module {
         }.value
     }
     
-    static func isAvailable(_ context: FunctionContext, _: FunctionArguments) async throws -> (any Encodable & Sendable)? {
+    static func secureEnclaveIsAvailable(_ context: FunctionContext, _: FunctionArguments) async throws -> (any Encodable & Sendable)? {
         guard await context.checkSameSecurityOrigin() else { return nil }
         return SecureEnclave.isAvailable
     }

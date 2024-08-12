@@ -6,6 +6,9 @@
 //
 
 import Foundation
+#if canImport(UIKit)
+import UIKit
+#endif
 
 extension FunctionArgumentName {
     fileprivate static let level: Self = level
@@ -19,8 +22,14 @@ struct DeviceModule: Module {
     static let events: [EventName: EventPublisher] = [
         "batteryLevelDidChange": NotificationCenter.default.webEvent(for: UIDevice.batteryLevelDidChangeNotification),
         "batteryStateDidChange": NotificationCenter.default.webEvent(for: UIDevice.batteryStateDidChangeNotification),
+        "powerStateDidChange": NotificationCenter.default.webEvent(for: Notification.Name.NSProcessInfoPowerStateDidChange),
         "brightnessDidChange": NotificationCenter.default.webEvent(for: UIScreen.brightnessDidChangeNotification),
         "proximityStateDidChange": NotificationCenter.default.webEvent(for: UIDevice.proximityStateDidChangeNotification),
+    ]
+#elseif canImport(AppKit)
+    @MainActor
+    static let events: [EventName: EventPublisher] = [
+        "powerStateDidChange": NotificationCenter.default.webEvent(for: Notification.Name.NSProcessInfoPowerStateDidChange),
     ]
 #endif
     
@@ -76,41 +85,61 @@ struct DeviceInfo: Encodable, Sendable {
     let screenBrightness: CGFloat
 }
 
-#if canImport(UIKit.UIDevice)
-import UIKit
-
 extension DeviceInfo {
     @MainActor
     init() {
+        let processInfo = ProcessInfo.processInfo
+#if canImport(UIKit)
         let device = UIDevice.current
-        let info = ProcessInfo.processInfo
         self.id = device.identifierForVendor?.uuidString ?? UUID().uuidString
         self.persistedID = device.identifierForVendor?.uuidString ?? UUID().uuidString
         self.name = device.name
         self.model = device.model
         self.osName = device.systemName
-        self.osVersion = device.systemVersion
         self.deviceOrientation = device.orientation.name
         self.batteryState = device.batteryState.name
         self.batteryLevel = device.batteryLevel
-        self.isLowPowerEnabled = ProcessInfo.processInfo.isLowPowerModeEnabled
         self.proximityState = device.proximityState
-        if info.isMacCatalystApp {
-            self.idiom = "macCatalyst"
-        } else if info.isiOSAppOnMac {
-            self.idiom = "mac"
-        } else {
-            self.idiom = device.userInterfaceIdiom.name
-        }
-        self.processorCount = info.processorCount
-        self.physicalMemory = info.physicalMemory
-        self.systemUptime = info.systemUptime
+        
         let screen = UIApplication.shared.currentScenes.first?.screen ?? UIScreen.main
         self.screenSize = screen.bounds.size
         self.screenBrightness = screen.brightness
+#elseif canImport(AppKit)
+        self.id = UUID().uuidString
+        self.persistedID = UUID().uuidString
+        self.name = processInfo.hostName
+        self.model = DeviceInfo.modelIdentifier() ?? "Unknown"
+        self.osName = "macos"
+        self.deviceOrientation = "unknown"
+        self.batteryState = "unknown"
+        self.batteryLevel = Self.batteryLevel() ?? 1
+        self.proximityState = false
+        
+        let screen = NSScreen.main
+        self.screenSize = screen?.frame.size ?? .zero
+        self.screenBrightness = 1
+#endif
+        
+        if processInfo.isMacCatalystApp {
+            self.idiom = "macCatalyst"
+        } else if processInfo.isiOSAppOnMac {
+            self.idiom = "mac"
+        } else {
+#if canImport(UIKit)
+            self.idiom = device.userInterfaceIdiom.name
+#else
+            self.idiom = "mac"
+#endif
+        }
+        self.osVersion = processInfo.operatingSystemVersionString
+        self.isLowPowerEnabled = processInfo.isLowPowerModeEnabled
+        self.processorCount = processInfo.processorCount
+        self.physicalMemory = processInfo.physicalMemory
+        self.systemUptime = processInfo.systemUptime
     }
 }
 
+#if canImport(UIKit)
 extension UIDeviceOrientation {
     var name: String {
         switch self {
@@ -179,36 +208,13 @@ import AppKit
 import IOKit.ps
 
 extension DeviceInfo {
-    @MainActor
-    init() {
-        let info = ProcessInfo.processInfo
-        self.id = UUID().uuidString
-        self.persistedID = UUID().uuidString
-        self.name = info.hostName
-        self.model = DeviceInfo.modelIdentifier() ?? "Unknown"
-        self.osName = "macos"
-        self.osVersion = info.operatingSystemVersionString
-        self.deviceOrientation = "unknown"
-        self.batteryState = "unknown"
-        self.batteryLevel = Self.batteryLevel() ?? 1
-        self.isLowPowerEnabled = false
-        self.proximityState = false
-        self.idiom = "mac"
-        self.processorCount = info.processorCount
-        self.physicalMemory = info.physicalMemory
-        self.systemUptime = info.systemUptime
-        let screen = NSScreen.main
-        self.screenSize = screen?.frame.size ?? .zero
-        self.screenBrightness = 1
-    }
-    
     private static func modelIdentifier() -> String? {
         let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOPlatformExpertDevice"))
         defer { IOObjectRelease(service) }
 
         if let modelData = IORegistryEntryCreateCFProperty(service, "model" as CFString, kCFAllocatorDefault, 0).takeRetainedValue() as? Data {
             return modelData.withUnsafeBytes { (cString: UnsafeRawBufferPointer) -> String in
-                return String(cString: cString.assumingMemoryBound(to: UInt8.self).baseAddress!)
+                String(cString: cString.assumingMemoryBound(to: UInt8.self).baseAddress!)
             }
         }
 
