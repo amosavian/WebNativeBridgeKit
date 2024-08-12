@@ -26,20 +26,14 @@ extension FunctionArgumentName {
 struct HapticsModule: Module {
     static let name: ModuleName = "haptics"
     
-#if canImport(UIKit.UIFeedbackGenerator)
     static let functions: [FunctionName: FunctionSignature] = [
         .haptic: haptic,
         .vibrate: vibrate,
     ]
-#else
-    static let functions: [FunctionName: FunctionSignature] = [
-        .vibrate: vibrate,
-    ]
-#endif
     
-#if canImport(UIKit.UIFeedbackGenerator)
     @MainActor
     static func haptic(_: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
+#if canImport(UIKit.UIFeedbackGenerator)
         switch kwArgs[.type] as? String {
         case "impact":
             let feedback = UIImpactFeedbackGenerator(style: .init(name: kwArgs[.style] as? String))
@@ -57,19 +51,41 @@ struct HapticsModule: Module {
         default:
             break
         }
+#endif
         return nil
     }
-#endif
     
     @MainActor
     static var engine: CHHapticEngine?
     
     @MainActor
     static func vibrate(_: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
-        guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else {
-            return nil
+        guard let timeSeries = kwArgs.values.first else { return nil }
+        
+        switch timeSeries {
+        case let durations as [NSNumber]:
+            try await vibrate(timeSeries: durations.map(\.doubleValue).map { .init(duration: $0) })
+        case let duration as NSNumber:
+            try await vibrate(timeSeries: [.init(duration: duration.doubleValue)])
+        default:
+            break
         }
         
+        return nil
+    }
+    
+    private struct Vibration {
+        let duration: TimeInterval
+        let type: CHHapticEvent.EventType
+        
+        init(duration: TimeInterval, type: CHHapticEvent.EventType = .hapticContinuous) {
+            self.duration = duration
+            self.type = type
+        }
+    }
+    
+    @MainActor
+    private static func vibrate(timeSeries: [Vibration]) async throws {
         if engine == nil {
             try await MainActor.run {
                 engine = try CHHapticEngine()
@@ -86,29 +102,24 @@ struct HapticsModule: Module {
             }
         }
         
-        guard let arg = kwArgs.values.first else { return nil }
         var events: [CHHapticEvent] = []
-        switch arg {
-        case let durations as [NSNumber]:
-            var totalDuration: TimeInterval = 0.0
-            for (index, duration) in durations.enumerated() {
-                let duration = duration.doubleValue / 1000
-                defer { totalDuration += duration }
-                guard index.isMultiple(of: 2) else { continue }
-                events.append(.init(eventType: .hapticContinuous, parameters: [], relativeTime: totalDuration, duration: duration))
-            }
-        case let duration as NSNumber:
+        switch timeSeries.count {
+        case 1:
             events = [
-                .init(eventType: .hapticContinuous, parameters: [], relativeTime: 0.6, duration: duration.doubleValue / 1000),
+                .init(eventType: timeSeries[0].type, parameters: [], relativeTime: 0.6, duration: timeSeries[0].duration),
             ]
         default:
-            break
+            var totalDuration: TimeInterval = 0.0
+            for (index, action) in timeSeries.enumerated() {
+                let duration = action.duration / 1000
+                defer { totalDuration += duration }
+                guard index.isMultiple(of: 2) else { continue }
+                events.append(.init(eventType: action.type, parameters: [], relativeTime: totalDuration, duration: duration))
+            }
         }
         let pattern = try CHHapticPattern(events: events, parameters: [])
         let player = try engine?.makePlayer(with: pattern)
         try player?.start(atTime: 0)
-        
-        return nil
     }
 }
 
