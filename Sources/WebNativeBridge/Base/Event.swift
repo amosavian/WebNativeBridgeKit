@@ -19,28 +19,9 @@ public struct EventName: StringRepresentable {
     }
 }
 
-private nonisolated(unsafe) var cancellablesHandle: UInt8 = 0
-
-private class CancellableContainer: NSObject {
-    var storedCancellables: Set<AnyCancellable>
-    
-    init(_ value: Set<AnyCancellable>) {
-        self.storedCancellables = value
-    }
-}
-
-extension WKWebView {
-    var storedCancellables: Set<AnyCancellable> {
-        get {
-            (objc_getAssociatedObject(self, &cancellablesHandle) as? CancellableContainer)?.storedCancellables ?? []
-        }
-        set {
-            objc_setAssociatedObject(self, &cancellablesHandle, CancellableContainer(newValue), .OBJC_ASSOCIATION_RETAIN_NONATOMIC)
-        }
-    }
-    
+extension WKWebView: CancellableContainer {
     @MainActor
-    public func registerEvents(module: Module.Type) {
+    public func registerEvents<M: Module>(module: M.Type) {
         for (key, value) in module.events {
             value
                 .sink { @MainActor [weak self] details in
@@ -56,7 +37,7 @@ extension WKWebView {
                         """
                     self?.evaluateJavaScript(script)
                 }
-                .store(in: &storedCancellables)
+                .store(in: &cancellableStorage)
         }
     }
 }

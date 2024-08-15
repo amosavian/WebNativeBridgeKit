@@ -29,6 +29,7 @@ struct ApplicationModule: Module {
         "systemTimeZoneDidChange": NotificationCenter.default.webEvent(for: Notification.Name.NSSystemTimeZoneDidChange),
         "systemClockDidChange": NotificationCenter.default.webEvent(for: Notification.Name.NSSystemClockDidChange),
         "calendarDayChanged": NotificationCenter.default.webEvent(for: Notification.Name.NSCalendarDayChanged),
+        "significantTimeChange": NotificationCenter.default.webEvent(for: UIApplication.significantTimeChangeNotification),
     ]
 #elseif canImport(AppKit)
     @MainActor
@@ -102,6 +103,6 @@ extension UIApplication {
 }
 #endif
 
-#if compiler(>=6.0)
+#if compiler(>=6.0) && !canImport(UIKit)
 extension NSRunningApplication: @retroactive @unchecked Sendable {}
 #endif

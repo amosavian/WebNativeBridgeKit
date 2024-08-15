@@ -7,6 +7,7 @@
 
 import Foundation
 import WebKit
+import Combine
 
 @MainActor
 open class WebBridgeMessageHandler: NSObject, WKScriptMessageHandlerWithReply, @unchecked Sendable {
@@ -52,7 +53,7 @@ extension WKUserContentController {
     ]
     
     @MainActor
-    public func registerFunctions(module: Module.Type, registry: ModuleRegistry = .shared) {
+    public func registerFunctions<M: Module>(module: M.Type, registry: ModuleRegistry = .shared) {
         registry.add(module: module)
         let handler: WebBridgeMessageHandler = registry === ModuleRegistry.shared ? .shared : .init(moduleRegistry: registry)
         addScriptMessageHandler(
@@ -109,7 +110,16 @@ extension WKWebView {
 }
 
 #if canImport(UIKit)
+enum KeyboardCancellableKey: CancellableKey {
+    nonisolated(unsafe) static var key: Int8 = 0
+}
+
 extension WKWebView {
+    var keyboardCancellables: Set<AnyCancellable> {
+        get { self[KeyboardCancellableKey.self] }
+        set { self[KeyboardCancellableKey.self] = newValue }
+    }
+    
     @MainActor
     private func updateKeyboard(_ notification: Notification) {
         guard let frame = (notification.userInfo?[UIView.keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue else { return }
@@ -131,30 +141,15 @@ extension WKWebView {
     
     @MainActor
     public func observeKeyboard() {
-        NotificationCenter.default.addObserver(
-            forName: UIResponder.keyboardWillShowNotification,
-            object: nil, queue: .main
-        ) { notification in
-            MainActor.assumeIsolated { [weak self] in
+        NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)
+            .merge(
+                with: NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification),
+                NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification))
+            .receive(on: DispatchQueue.main)
+            .sink { @MainActor [weak self] notification in
                 self?.updateKeyboard(notification)
             }
-        }
-        NotificationCenter.default.addObserver(
-            forName: UIResponder.keyboardWillHideNotification,
-            object: nil, queue: .main
-        ) { notification in
-            MainActor.assumeIsolated { [weak self] in
-                self?.updateKeyboard(notification)
-            }
-        }
-        NotificationCenter.default.addObserver(
-            forName: UIResponder.keyboardWillChangeFrameNotification,
-            object: nil, queue: .main
-        ) { notification in
-            MainActor.assumeIsolated { [weak self] in
-                self?.updateKeyboard(notification)
-            }
-        }
+            .store(in: &keyboardCancellables)
     }
 }
 #endif

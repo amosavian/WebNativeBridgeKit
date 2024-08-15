@@ -38,8 +38,8 @@ extension Module {
     public static var registrationScript: String {
         let functionsList = functions.keys.map { functionName in
             """
-            \(functionName): function (args) {
-                window.webkit.messageHandlers.\(name).postMessage({"name": \(functionName), ...args});
+            \(functionName): function (args = {}) {
+                return window.webkit.messageHandlers.\(name).postMessage({"name": \(functionName), ...args});
             }
             """
         }
@@ -61,7 +61,7 @@ public final class ModuleRegistry {
         }
     }
     
-    public func add(module: Module.Type) {
+    public func add<M: Module>(module: M.Type) {
         assert(!functionRegistries.keys.contains(module.name))
         functionRegistries[module.name] = module.functions
     }

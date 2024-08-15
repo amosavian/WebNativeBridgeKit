@@ -41,3 +41,13 @@ let package = Package(
         ),
     ]
 )
+
+for target in package.targets {
+    var swiftSettings: [SwiftSetting] = [
+        .enableExperimentalFeature("StrictConcurrency=complete"),
+    ]
+#if swift(>=5.9)
+    swiftSettings.append(.enableUpcomingFeature("ExistentialAny"))
+#endif
+    target.swiftSettings = swiftSettings
+}

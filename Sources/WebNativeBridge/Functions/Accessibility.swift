@@ -11,12 +11,6 @@ import UIKit
 import AppKit
 #endif
 
-extension FunctionArgumentName {
-    fileprivate static let title: Self = "title"
-    fileprivate static let url: Self = "url"
-    fileprivate static let universalLink: Self = "universalLink"
-}
-
 struct AccessibilityModule: Module {
     static let name: ModuleName = "accessibility"
     
@@ -83,6 +77,7 @@ struct AccessibilitySettings: Encodable, Sendable {
     let isOnOffSwitchLabelsEnabled: Bool
     
 #if canImport(UIKit)
+    @MainActor
     init() {
         self.isVoiceOverRunning = UIAccessibility.isVoiceOverRunning
         self.isMonoAudioEnabled = UIAccessibility.isMonoAudioEnabled

@@ -106,7 +106,7 @@ struct ViewModule: Module {
             return nil
         }
 #if canImport(UIKit)
-        guard let vc = context.webView?.parentViewController as? PreferenceCustomizableViewController else { return nil }
+        guard let vc = context.webView?.parentViewController as? (any PreferenceCustomizableViewController) else { return nil }
         
         switch style {
         case "none":
@@ -131,10 +131,7 @@ struct ViewModule: Module {
     }
     
     @MainActor
-    static func getScreenshot(_ context: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
-        guard let webView = context.webView else {
-            return nil
-        }
+    private static func screenshotInfo(_ webView: WKWebView,_ kwArgs: FunctionArguments) async throws -> (rect: CGRect?, format: WKWebView.ImageType) {
         let rect: CGRect?
         if let id = kwArgs[.elementID] as? String {
             rect = try await webView.rectOfElement(id: id)
@@ -142,25 +139,19 @@ struct ViewModule: Module {
             rect = nil
         }
         
-        let configuration = WKSnapshotConfiguration()
-        configuration.rect = rect ?? .null
-        let image = try await webView.takeSnapshot(configuration: configuration)
-        switch kwArgs[.format] as? String {
-        case "image/jpeg":
-            let compressionQuality = kwArgs[.compressionQuality] as? Double ?? 0.9
-            return image.jpegData(compressionQuality: compressionQuality)
-        case "image/heic":
-#if canImport(UIKit)
-            if #available(iOS 17.0, macCatalyst 17.0, tvOS 17.0, visionOS 1.0, *) {
-                return image.heicData()
-            }
-#endif
+        let format = (kwArgs[.format] as? String).flatMap {
+            WKWebView.ImageType($0, compressionQuality: kwArgs[.compressionQuality] as? Double ?? 0.9)
+        } ?? .png
+        return (rect, format)
+    }
+    
+    @MainActor
+    static func getScreenshot(_ context: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
+        guard let webView = context.webView else {
             return nil
-        case "image/png":
-            fallthrough
-        default:
-            return image.pngData()
         }
+        let (rect, format) = try await screenshotInfo(webView, kwArgs)
+        return try await webView.screenshot(rect: rect, format: format)
     }
 }
 
@@ -175,6 +166,57 @@ extension NSImage {
     }
 }
 #endif
+
+extension WKWebView {
+    enum ImageType {
+        case jpeg(compression: Double)
+        case png
+        case heic
+        case pdf
+        
+        init?(_ mimeType: String, compressionQuality: Double = 0.9) {
+            switch mimeType {
+            case "image/jpeg":
+                self = .jpeg(compression: compressionQuality)
+            case "image/heic":
+                self = .heic
+            case "image/png":
+                self = .png
+            case "application/pdf":
+                self = .pdf
+            default:
+                return nil
+            }
+        }
+    }
+    
+    @MainActor
+    func screenshot(rect: CGRect? = nil, format: ImageType) async throws -> Data? {
+        let configuration = WKSnapshotConfiguration()
+        configuration.rect = rect ?? .null
+        
+        switch format {
+        case .jpeg(let compressionQuality):
+            let image = try await takeSnapshot(configuration: configuration)
+            return image.jpegData(compressionQuality: compressionQuality)
+        case .heic:
+#if canImport(UIKit)
+            if #available(iOS 17.0, macCatalyst 17.0, tvOS 17.0, visionOS 1.0, *) {
+                let image = try await takeSnapshot(configuration: configuration)
+                return image.heicData()
+            }
+#endif
+            return nil
+        case .png:
+            let image = try await takeSnapshot(configuration: configuration)
+            return image.pngData()
+        case .pdf:
+            let configuration = WKPDFConfiguration()
+            configuration.rect = rect ?? .null
+            return try await pdf(configuration: configuration)
+        }
+    }
+}
 
 #if canImport(UIKit)
 public protocol PreferenceCustomizableViewController: UIViewController {
@@ -264,15 +306,24 @@ extension UIView.AnimationCurve {
 
 extension [AnyHashable: Any] {
     var mapKeyboardParams: [String: any Encodable & Sendable]? {
+        var keyboardFrameBeginUserInfoKey: String = ""
+        var keyboardFrameEndUserInfoKey: String = ""
+        var keyboardAnimationDurationUserInfoKey: String = ""
+        var keyboardAnimationCurveUserInfoKey: String = ""
         MainActor.assumeIsolated {
-            [
-                "beginFrame": (self[UIView.keyboardFrameBeginUserInfoKey] as? NSValue)?.cgRectValue.dictionary,
-                "endFrame": (self[UIView.keyboardFrameBeginUserInfoKey] as? NSValue)?.cgRectValue.dictionary,
-                "duration": (self[UIView.keyboardAnimationDurationUserInfoKey] as? Double),
-                "curve": (self[UIView.keyboardAnimationDurationUserInfoKey] as? Int)
-                    .flatMap(UIView.AnimationCurve.init(rawValue:))?.string,
-            ]
+            keyboardFrameBeginUserInfoKey = UIView.keyboardFrameBeginUserInfoKey
+            keyboardFrameEndUserInfoKey = UIView.keyboardFrameEndUserInfoKey
+            keyboardAnimationDurationUserInfoKey = UIView.keyboardAnimationDurationUserInfoKey
+            keyboardAnimationCurveUserInfoKey = UIView.keyboardAnimationCurveUserInfoKey
         }
+        return [
+            "beginFrame": (self[keyboardFrameBeginUserInfoKey] as? NSValue)?.cgRectValue.dictionary,
+            "endFrame": (self[keyboardFrameEndUserInfoKey] as? NSValue)?.cgRectValue.dictionary,
+            "duration": (self[keyboardAnimationDurationUserInfoKey] as? Double),
+            "curve": (self[keyboardAnimationCurveUserInfoKey] as? Int)
+                .flatMap(UIView.AnimationCurve.init(rawValue:))?.string,
+        ]
+
     }
 }
 #endif
