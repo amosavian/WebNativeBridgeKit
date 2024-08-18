@@ -54,31 +54,7 @@ struct SecurityModule: Module {
             return nil
         }
         
-        // To prevent blocking main thread and UI.
-        return try await Task.detached(priority: .userInitiated) {
-            let query = [
-                kSecClass: kSecClassGenericPassword,
-                kSecAttrService: service,
-                kSecAttrAccount: key,
-                kSecAttrSynchronizable: kSecAttrSynchronizableAny,
-                kSecReturnData: kCFBooleanTrue!,
-                kSecMatchLimit: kSecMatchLimitOne,
-            ] as CFDictionary
-            
-            var dataTypeRef: AnyObject? = nil
-            let status = SecItemCopyMatching(query, &dataTypeRef)
-            if status == noErr {
-                return (dataTypeRef as? Data)
-            } else {
-                throw NSError(
-                    domain: "kSecurityOSStatus",
-                    code: Int(status),
-                    userInfo: [
-                        NSLocalizedDescriptionKey: SecCopyErrorMessageString(status, nil) ?? "",
-                    ]
-                )
-            }
-        }.value
+        return try await Vault(store: .generic(service: service)).get(id: key)
     }
     
     static func saveValueForKey(_ context: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
@@ -98,19 +74,8 @@ struct SecurityModule: Module {
         default:
             return nil
         }
-        
-        return try await Task.detached(priority: .userInitiated) {
-            let query = try [
-                kSecClass: kSecClassGenericPassword,
-                kSecAttrService: service,
-                kSecAttrSynchronizable: syncronizable ? kCFBooleanTrue! : kCFBooleanFalse!,
-                kSecAttrAccount: key,
-                kSecAttrAccessControl: SecAccessControl.create(kwArgs: kwArgs),
-                kSecValueData: data as CFData,
-            ] as CFDictionary
-            
-            return SecItemAdd(query, nil)
-        }.value
+        try await Vault(store: .generic(service: service)).set(data, for: key, isSyncrhronized: syncronizable, accessControl: SecAccessControl.create(kwArgs: kwArgs))
+        return nil
     }
     
     static func secureEnclaveIsAvailable(_ context: FunctionContext, _: FunctionArguments) async throws -> (any Encodable & Sendable)? {
@@ -207,6 +172,99 @@ struct SecurityModule: Module {
             }
             return nil
         }.value
+    }
+}
+
+struct Vault {
+    enum Store: Sendable {
+        case generic(service: String)
+        case internet(url: URL)
+        
+        var query: [CFString: Any] {
+            get throws {
+                switch self {
+                case .generic(let service):
+                    return [
+                        kSecClass: kSecClassGenericPassword,
+                        kSecAttrService: service,
+                    ]
+                case .internet(let url):
+                    guard let host = url.host else {
+                        throw URLError(.badURL)
+                    }
+                    let netProtocol = switch url.scheme?.lowercased() {
+                    case "https":
+                        kSecAttrProtocolHTTPS
+                    default:
+                        url.scheme?.lowercased() as CFString?
+                    }
+                    
+                    return [
+                        kSecClass: kSecClassInternetPassword,
+                        kSecAttrProtocol: netProtocol,
+                        kSecAttrServer: host as CFString,
+                    ]
+                }
+            }
+        }
+        
+        func merge(into currentQuery: inout [CFString: Any]) throws {
+            try currentQuery.merge(query , uniquingKeysWith: { $1 })
+        }
+    }
+    
+    let store: Store
+    
+    init(store: Store) {
+        self.store = store
+    }
+    
+    func get(id: String) async throws -> Data {
+        // To prevent blocking main thread and UI.
+        return try await Task.detached(priority: .userInitiated) {
+            var query: [CFString: Any] = [
+                kSecAttrAccount: id,
+                kSecAttrSynchronizable: kSecAttrSynchronizableAny,
+                kSecReturnData: kCFBooleanTrue!,
+                kSecMatchLimit: kSecMatchLimitOne,
+            ]
+            try store.merge(into: &query)
+            
+            var dataTypeRef: AnyObject? = nil
+            let status = SecItemCopyMatching(query as CFDictionary, &dataTypeRef)
+            if status == noErr, let data = dataTypeRef as? Data {
+                return data
+            } else {
+                throw NSError(
+                    domain: "kSecurityOSStatus",
+                    code: Int(status),
+                    userInfo: [
+                        NSLocalizedDescriptionKey: SecCopyErrorMessageString(status, nil) ?? "",
+                    ]
+                )
+            }
+        }.value
+    }
+    
+    func set(_ value: Data, for id: String, isSyncrhronized: Bool = false, accessControl: SecAccessControl? = nil) async throws {
+        let status = try await Task.detached(priority: .userInitiated) {
+            var query: [CFString: Any] = [
+                kSecAttrAccount: id,
+                kSecAttrSynchronizable: isSyncrhronized ? kCFBooleanTrue! : kCFBooleanFalse!,
+                kSecAttrAccessControl: accessControl,
+                kSecValueData: value as CFData,
+            ]
+            try store.merge(into: &query)
+            
+            return SecItemAdd(query as CFDictionary, nil)
+        }.value
+        
+        if status != noErr {
+            let errorDescription = SecCopyErrorMessageString(status, nil)
+            throw NSError(domain: kCFErrorDomainOSStatus as String, code: Int(status), userInfo: [
+                NSLocalizedDescriptionKey: errorDescription,
+            ])
+        }
     }
 }
 

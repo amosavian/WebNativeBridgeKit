@@ -21,10 +21,10 @@ open class WebBridgeMessageHandler: NSObject, WKScriptMessageHandlerWithReply, @
     
     public func userContentController(_: WKUserContentController, didReceive message: WKScriptMessage) async -> (Any?, String?) {
         let moduleName = ModuleName(message.name)
-        guard var body = message.body as? [String: any Sendable], let functionName = body["name"] as? String else {
+        guard var body = message.body as? [String: any Sendable], let functionName = body["functionName"] as? String else {
             return (nil, nil)
         }
-        _ = body.removeValue(forKey: "name")
+        _ = body.removeValue(forKey: "functionName")
         let arguments = FunctionArguments(uniqueKeysWithValues: body.map { (FunctionArgumentName($0), $1) })
         
         do {

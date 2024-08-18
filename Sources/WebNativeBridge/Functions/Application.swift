@@ -97,7 +97,8 @@ extension UIApplication {
     @MainActor
     var currentScenes: [UIWindowScene] {
         UIApplication.shared.connectedScenes
-            .filter { $0.activationState == .foregroundActive }
+            .filter { $0.activationState != .unattached }
+            .sorted { $0.activationState.rawValue < $1.activationState.rawValue }
             .compactMap { $0 as? UIWindowScene }
     }
 }

@@ -85,56 +85,17 @@ struct BiometricModule: Module {
             return nil
         }
         let syncronizable = (kwArgs[.synchronizable] as? Bool ?? false)
-        guard let url = context.frameInfo.url, let host = url.host else { return nil }
-        return try await Task.detached(priority: .userInitiated) {
-            let query = try [
-                kSecClass: kSecClassInternetPassword,
-                kSecAttrProtocol: kSecAttrProtocolHTTPS,
-                kSecAttrServer: host as CFString,
-                kSecAttrSynchronizable: syncronizable ? kCFBooleanTrue! : kCFBooleanFalse!,
-                kSecAttrAccount: username,
-                kSecAttrAccessControl: SecAccessControl.create(kwArgs: kwArgs),
-                kSecValueData: Data(credential.utf8),
-            ] as CFDictionary
-            
-            return SecItemAdd(query, nil)
-        }.value
+        guard let url = context.frameInfo.url else { return nil }
+        try await Vault(store: .internet(url: url)).set(Data(credential.utf8), for: username, isSyncrhronized: syncronizable, accessControl: SecAccessControl.create(kwArgs: kwArgs))
+        return nil
     }
     
     static func getCredential(_ context: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
         guard let username = kwArgs[.id] as? String else {
             return nil
         }
-        guard let url = context.frameInfo.url, let host = url.host else { return nil }
-        
-        // To prevent blocking main thread and UI.
-        return try await Task.detached(priority: .userInitiated) {
-            let query = [
-                kSecClass: kSecClassInternetPassword,
-                kSecAttrProtocol: kSecAttrProtocolHTTPS,
-                kSecAttrServer: host as CFString,
-                kSecAttrAccount: username,
-                kSecAttrSynchronizable: kSecAttrSynchronizableAny,
-                kSecReturnData: kCFBooleanTrue!,
-                kSecMatchLimit: kSecMatchLimitOne,
-            ] as CFDictionary
-            
-            var dataTypeRef: AnyObject? = nil
-            let status = SecItemCopyMatching(query, &dataTypeRef)
-            if status == noErr {
-                return (dataTypeRef as? Data).flatMap {
-                    String(decoding: $0, as: UTF8.self)
-                }
-            } else {
-                throw NSError(
-                    domain: "kSecurityOSStatus",
-                    code: Int(status),
-                    userInfo: [
-                        NSLocalizedDescriptionKey: SecCopyErrorMessageString(status, nil) ?? "",
-                    ]
-                )
-            }
-        }.value
+        guard let url = context.frameInfo.url else { return nil }
+        return try await Vault(store: .internet(url: url)).get(id: username)
     }
 }
 

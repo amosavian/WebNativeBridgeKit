@@ -39,7 +39,7 @@ extension Module {
         let functionsList = functions.keys.map { functionName in
             """
             \(functionName): function (args = {}) {
-                return window.webkit.messageHandlers.\(name).postMessage({"name": \(functionName), ...args});
+                return window.webkit.messageHandlers.\(name).postMessage({"functionName": \(functionName), ...args});
             }
             """
         }
@@ -62,7 +62,7 @@ public final class ModuleRegistry {
     }
     
     public func add<M: Module>(module: M.Type) {
-        assert(!functionRegistries.keys.contains(module.name))
+        assert(!functionRegistries.keys.contains(module.name), "Module \(module.name) is already registered.")
         functionRegistries[module.name] = module.functions
     }
     
