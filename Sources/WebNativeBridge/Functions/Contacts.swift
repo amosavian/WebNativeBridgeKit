@@ -85,7 +85,7 @@ struct ContactsModule: Module {
 
 extension CNAuthorizationStatus {
     var name: String {
-        switch self.rawValue {
+        switch rawValue {
         case CNAuthorizationStatus.notDetermined.rawValue:
             "notDetermined"
         case CNAuthorizationStatus.restricted.rawValue:

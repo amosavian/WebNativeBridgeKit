@@ -131,7 +131,7 @@ struct ViewModule: Module {
     }
     
     @MainActor
-    private static func screenshotInfo(_ webView: WKWebView,_ kwArgs: FunctionArguments) async throws -> (rect: CGRect?, format: WKWebView.ImageType) {
+    private static func screenshotInfo(_ webView: WKWebView, _ kwArgs: FunctionArguments) async throws -> (rect: CGRect?, format: WKWebView.ImageType) {
         let rect: CGRect?
         if let id = kwArgs[.elementID] as? String {
             rect = try await webView.rectOfElement(id: id)
@@ -306,10 +306,10 @@ extension UIView.AnimationCurve {
 
 extension [AnyHashable: Any] {
     var mapKeyboardParams: [String: any Encodable & Sendable]? {
-        var keyboardFrameBeginUserInfoKey: String = ""
-        var keyboardFrameEndUserInfoKey: String = ""
-        var keyboardAnimationDurationUserInfoKey: String = ""
-        var keyboardAnimationCurveUserInfoKey: String = ""
+        var keyboardFrameBeginUserInfoKey = ""
+        var keyboardFrameEndUserInfoKey = ""
+        var keyboardAnimationDurationUserInfoKey = ""
+        var keyboardAnimationCurveUserInfoKey = ""
         MainActor.assumeIsolated {
             keyboardFrameBeginUserInfoKey = UIView.keyboardFrameBeginUserInfoKey
             keyboardFrameEndUserInfoKey = UIView.keyboardFrameEndUserInfoKey
@@ -323,7 +323,6 @@ extension [AnyHashable: Any] {
             "curve": (self[keyboardAnimationCurveUserInfoKey] as? Int)
                 .flatMap(UIView.AnimationCurve.init(rawValue:))?.string,
         ]
-
     }
 }
 #endif

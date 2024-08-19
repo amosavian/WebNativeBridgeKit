@@ -7,6 +7,7 @@
 
 import CryptoKit
 import Foundation
+import LocalAuthentication
 
 extension FunctionArgumentName {
     fileprivate static let id: Self = "id"
@@ -54,7 +55,7 @@ struct SecurityModule: Module {
             return nil
         }
         
-        return try await Vault(store: .generic(service: service)).get(id: key)
+        return try await Vault(.generic(service: service)).get(id: key)
     }
     
     static func saveValueForKey(_ context: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
@@ -74,7 +75,7 @@ struct SecurityModule: Module {
         default:
             return nil
         }
-        try await Vault(store: .generic(service: service)).set(data, for: key, isSyncrhronized: syncronizable, accessControl: SecAccessControl.create(kwArgs: kwArgs))
+        try await Vault(.generic(service: service)).set(data, for: key, isSyncrhronized: syncronizable, accessControl: SecAccessControl.create(kwArgs: kwArgs))
         return nil
     }
     
@@ -175,12 +176,12 @@ struct SecurityModule: Module {
     }
 }
 
-struct Vault {
-    enum Store: Sendable {
+public struct Vault {
+    public enum Storage: Sendable {
         case generic(service: String)
         case internet(url: URL)
         
-        var query: [CFString: Any] {
+        private var query: [CFString: Any] {
             get throws {
                 switch self {
                 case .generic(let service):
@@ -208,27 +209,27 @@ struct Vault {
             }
         }
         
-        func merge(into currentQuery: inout [CFString: Any]) throws {
-            try currentQuery.merge(query , uniquingKeysWith: { $1 })
+        fileprivate func merge(into currentQuery: inout [CFString: Any]) throws {
+            try currentQuery.merge(query, uniquingKeysWith: { $1 })
         }
     }
     
-    let store: Store
+    public let storage: Storage
     
-    init(store: Store) {
-        self.store = store
+    public init(_ storage: Storage) {
+        self.storage = storage
     }
     
-    func get(id: String) async throws -> Data {
+    public func get(id: String) async throws -> Data {
         // To prevent blocking main thread and UI.
-        return try await Task.detached(priority: .userInitiated) {
+        try await Task.detached(priority: .userInitiated) {
             var query: [CFString: Any] = [
                 kSecAttrAccount: id,
                 kSecAttrSynchronizable: kSecAttrSynchronizableAny,
                 kSecReturnData: kCFBooleanTrue!,
                 kSecMatchLimit: kSecMatchLimitOne,
             ]
-            try store.merge(into: &query)
+            try storage.merge(into: &query)
             
             var dataTypeRef: AnyObject? = nil
             let status = SecItemCopyMatching(query as CFDictionary, &dataTypeRef)
@@ -246,7 +247,7 @@ struct Vault {
         }.value
     }
     
-    func set(_ value: Data, for id: String, isSyncrhronized: Bool = false, accessControl: SecAccessControl? = nil) async throws {
+    public func set(_ value: Data, for id: String, isSyncrhronized: Bool = false, accessControl: SecAccessControl? = nil) async throws {
         let status = try await Task.detached(priority: .userInitiated) {
             var query: [CFString: Any] = [
                 kSecAttrAccount: id,
@@ -254,7 +255,7 @@ struct Vault {
                 kSecAttrAccessControl: accessControl,
                 kSecValueData: value as CFData,
             ]
-            try store.merge(into: &query)
+            try storage.merge(into: &query)
             
             return SecItemAdd(query as CFDictionary, nil)
         }.value
@@ -265,6 +266,45 @@ struct Vault {
                 NSLocalizedDescriptionKey: errorDescription,
             ])
         }
+    }
+}
+
+extension SecAccessControl {
+    public static func create(useBiometric: Bool = true, useDevicePin: Bool = false, currentUser: Bool = true) throws -> SecAccessControl {
+        var flags: SecAccessControlCreateFlags = []
+        switch (useBiometric, currentUser) {
+        case (true, false):
+            flags = .biometryAny
+        case (true, true):
+            flags = .biometryCurrentSet
+        default:
+            break
+        }
+        if useDevicePin {
+            flags.formUnion([.or, .devicePasscode])
+        }
+        return try .create(flags: flags)
+    }
+    
+    public static func create(flags: SecAccessControlCreateFlags) throws -> SecAccessControl {
+        var access: SecAccessControl?
+        var error: Unmanaged<CFError>?
+        
+        access = SecAccessControlCreateWithFlags(
+            nil,
+            kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
+            flags,
+            &error
+        )
+        if let error = error?.takeRetainedValue() {
+            throw error
+        }
+        guard let access = access else {
+            assert(access != nil, "SecAccessControlCreateWithFlags failed")
+            throw LAError(.invalidContext)
+        }
+        
+        return access
     }
 }
 

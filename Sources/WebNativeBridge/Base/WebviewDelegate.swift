@@ -5,9 +5,9 @@
 //  Created by Amir Abbas Mousavian on 7/16/24.
 //
 
+import Combine
 import Foundation
 import WebKit
-import Combine
 
 @MainActor
 open class WebBridgeMessageHandler: NSObject, WKScriptMessageHandlerWithReply, @unchecked Sendable {
@@ -144,7 +144,8 @@ extension WKWebView {
         NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)
             .merge(
                 with: NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification),
-                NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification))
+                NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)
+            )
             .receive(on: DispatchQueue.main)
             .sink { @MainActor [weak self] notification in
                 self?.updateKeyboard(notification)

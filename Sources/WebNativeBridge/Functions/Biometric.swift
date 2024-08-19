@@ -86,7 +86,10 @@ struct BiometricModule: Module {
         }
         let syncronizable = (kwArgs[.synchronizable] as? Bool ?? false)
         guard let url = context.frameInfo.url else { return nil }
-        try await Vault(store: .internet(url: url)).set(Data(credential.utf8), for: username, isSyncrhronized: syncronizable, accessControl: SecAccessControl.create(kwArgs: kwArgs))
+        try await Vault(.internet(url: url)).set(
+            Data(credential.utf8), for: username, isSyncrhronized: syncronizable,
+            accessControl: SecAccessControl.create(kwArgs: kwArgs)
+        )
         return nil
     }
     
@@ -95,7 +98,7 @@ struct BiometricModule: Module {
             return nil
         }
         guard let url = context.frameInfo.url else { return nil }
-        return try await Vault(store: .internet(url: url)).get(id: username)
+        return try await Vault(.internet(url: url)).get(id: username)
     }
 }
 
@@ -104,41 +107,7 @@ extension SecAccessControl {
         let useBiometric = (kwArgs[.useBiometric] as? Bool ?? false)
         let useDevicePin = (kwArgs[.useDevicePin] as? Bool ?? false)
         let currentUser = (kwArgs[.currentUser] as? Bool ?? false)
-        
-        var flags: SecAccessControlCreateFlags = []
-        switch (useBiometric, currentUser) {
-        case (true, false):
-            flags = .biometryAny
-        case (true, true):
-            flags = .biometryCurrentSet
-        default:
-            break
-        }
-        if useDevicePin {
-            flags.formUnion([.or, .devicePasscode])
-        }
-        return try .create(flags: flags)
-    }
-    
-    static func create(flags: SecAccessControlCreateFlags) throws -> SecAccessControl {
-        var access: SecAccessControl?
-        var error: Unmanaged<CFError>?
-        
-        access = SecAccessControlCreateWithFlags(
-            nil,
-            kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-            flags,
-            &error
-        )
-        if let error = error?.takeRetainedValue() {
-            throw error
-        }
-        guard let access = access else {
-            assert(access != nil, "SecAccessControlCreateWithFlags failed")
-            throw LAError(.invalidContext)
-        }
-        
-        return access
+        return try .create(useBiometric: useBiometric, useDevicePin: useDevicePin, currentUser: currentUser)
     }
 }
 
