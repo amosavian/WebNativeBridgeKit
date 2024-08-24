@@ -35,6 +35,13 @@ public struct FrameInfo: Sendable {
     public let isMainFrame: Bool
     public let webView: WKWebView?
     
+    var baseURL: URL? {
+        guard let url = url else { return nil }
+        guard var components = URLComponents(url: url, resolvingAgainstBaseURL: true) else { return nil }
+        components.path = ""
+        return components.url
+    }
+    
     @MainActor
     init(frame: WKFrameInfo) {
         self.url = frame.request.url

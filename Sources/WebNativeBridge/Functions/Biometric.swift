@@ -85,9 +85,9 @@ struct BiometricModule: Module {
             return nil
         }
         let syncronizable = (kwArgs[.synchronizable] as? Bool ?? false)
-        guard let url = context.frameInfo.url else { return nil }
+        guard let url = context.frameInfo.baseURL else { return nil }
         try await Vault(.internet(url: url)).set(
-            Data(credential.utf8), for: username, isSyncrhronized: syncronizable,
+            Data(credential.utf8), for: .init(username), isSyncrhronized: syncronizable,
             accessControl: SecAccessControl.create(kwArgs: kwArgs)
         )
         return nil
@@ -97,8 +97,8 @@ struct BiometricModule: Module {
         guard let username = kwArgs[.id] as? String else {
             return nil
         }
-        guard let url = context.frameInfo.url else { return nil }
-        return try await Vault(.internet(url: url)).get(id: username)
+        guard var url = context.frameInfo.baseURL else { return nil }
+        return try await Vault(.internet(url: url)).getData(id: .init(username))
     }
 }
 

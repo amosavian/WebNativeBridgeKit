@@ -55,7 +55,7 @@ struct SecurityModule: Module {
             return nil
         }
         
-        return try await Vault(.generic(service: service)).get(id: key)
+        return try await Vault(.generic(service: service)).getData(id: .init(key))
     }
     
     static func saveValueForKey(_ context: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
@@ -75,7 +75,12 @@ struct SecurityModule: Module {
         default:
             return nil
         }
-        try await Vault(.generic(service: service)).set(data, for: key, isSyncrhronized: syncronizable, accessControl: SecAccessControl.create(kwArgs: kwArgs))
+        try await Vault(.generic(service: service))
+            .set(
+                data, for: .init(key),
+                isSyncrhronized: syncronizable,
+                accessControl: SecAccessControl.create(kwArgs: kwArgs)
+            )
         return nil
     }
     
@@ -173,138 +178,6 @@ struct SecurityModule: Module {
             }
             return nil
         }.value
-    }
-}
-
-public struct Vault {
-    public enum Storage: Sendable {
-        case generic(service: String)
-        case internet(url: URL)
-        
-        private var query: [CFString: Any] {
-            get throws {
-                switch self {
-                case .generic(let service):
-                    return [
-                        kSecClass: kSecClassGenericPassword,
-                        kSecAttrService: service,
-                    ]
-                case .internet(let url):
-                    guard let host = url.host else {
-                        throw URLError(.badURL)
-                    }
-                    let netProtocol = switch url.scheme?.lowercased() {
-                    case "https":
-                        kSecAttrProtocolHTTPS
-                    default:
-                        url.scheme?.lowercased() as CFString?
-                    }
-                    
-                    return [
-                        kSecClass: kSecClassInternetPassword,
-                        kSecAttrProtocol: netProtocol,
-                        kSecAttrServer: host as CFString,
-                    ]
-                }
-            }
-        }
-        
-        fileprivate func merge(into currentQuery: inout [CFString: Any]) throws {
-            try currentQuery.merge(query, uniquingKeysWith: { $1 })
-        }
-    }
-    
-    public let storage: Storage
-    
-    public init(_ storage: Storage) {
-        self.storage = storage
-    }
-    
-    public func get(id: String) async throws -> Data {
-        // To prevent blocking main thread and UI.
-        try await Task.detached(priority: .userInitiated) {
-            var query: [CFString: Any] = [
-                kSecAttrAccount: id,
-                kSecAttrSynchronizable: kSecAttrSynchronizableAny,
-                kSecReturnData: kCFBooleanTrue!,
-                kSecMatchLimit: kSecMatchLimitOne,
-            ]
-            try storage.merge(into: &query)
-            
-            var dataTypeRef: AnyObject? = nil
-            let status = SecItemCopyMatching(query as CFDictionary, &dataTypeRef)
-            if status == noErr, let data = dataTypeRef as? Data {
-                return data
-            } else {
-                throw NSError(
-                    domain: "kSecurityOSStatus",
-                    code: Int(status),
-                    userInfo: [
-                        NSLocalizedDescriptionKey: SecCopyErrorMessageString(status, nil) ?? "",
-                    ]
-                )
-            }
-        }.value
-    }
-    
-    public func set(_ value: Data, for id: String, isSyncrhronized: Bool = false, accessControl: SecAccessControl? = nil) async throws {
-        let status = try await Task.detached(priority: .userInitiated) {
-            var query: [CFString: Any] = [
-                kSecAttrAccount: id,
-                kSecAttrSynchronizable: isSyncrhronized ? kCFBooleanTrue! : kCFBooleanFalse!,
-                kSecAttrAccessControl: accessControl,
-                kSecValueData: value as CFData,
-            ]
-            try storage.merge(into: &query)
-            
-            return SecItemAdd(query as CFDictionary, nil)
-        }.value
-        
-        if status != noErr {
-            let errorDescription = SecCopyErrorMessageString(status, nil)
-            throw NSError(domain: kCFErrorDomainOSStatus as String, code: Int(status), userInfo: [
-                NSLocalizedDescriptionKey: errorDescription,
-            ])
-        }
-    }
-}
-
-extension SecAccessControl {
-    public static func create(useBiometric: Bool = true, useDevicePin: Bool = false, currentUser: Bool = true) throws -> SecAccessControl {
-        var flags: SecAccessControlCreateFlags = []
-        switch (useBiometric, currentUser) {
-        case (true, false):
-            flags = .biometryAny
-        case (true, true):
-            flags = .biometryCurrentSet
-        default:
-            break
-        }
-        if useDevicePin {
-            flags.formUnion([.or, .devicePasscode])
-        }
-        return try .create(flags: flags)
-    }
-    
-    public static func create(flags: SecAccessControlCreateFlags) throws -> SecAccessControl {
-        var access: SecAccessControl?
-        var error: Unmanaged<CFError>?
-        
-        access = SecAccessControlCreateWithFlags(
-            nil,
-            kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-            flags,
-            &error
-        )
-        if let error = error?.takeRetainedValue() {
-            throw error
-        }
-        guard let access = access else {
-            assert(access != nil, "SecAccessControlCreateWithFlags failed")
-            throw LAError(.invalidContext)
-        }
-        
-        return access
     }
 }
 

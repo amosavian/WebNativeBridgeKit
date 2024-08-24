@@ -31,7 +31,7 @@ extension CancellableKey where Self == GeneralCancellableKey {
 }
 
 protocol CancellableContainer: NSObjectProtocol {
-    subscript(cancellableHandle: any CancellableKey.Type) -> Set<AnyCancellable> { get set }
+    subscript(_: any CancellableKey.Type) -> Set<AnyCancellable> { get set }
 }
 
 extension CancellableContainer {
