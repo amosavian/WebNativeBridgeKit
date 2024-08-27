@@ -87,7 +87,7 @@ struct BiometricModule: Module {
         let syncronizable = (kwArgs[.synchronizable] as? Bool ?? false)
         guard let url = context.frameInfo.baseURL else { return nil }
         try await Vault(.internet(url: url)).set(
-            Data(credential.utf8), for: .init(username), isSyncrhronized: syncronizable,
+            Data(credential.utf8), for: .init(username), isSynchronized: syncronizable,
             accessControl: SecAccessControl.create(kwArgs: kwArgs)
         )
         return nil

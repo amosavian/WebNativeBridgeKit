@@ -51,7 +51,7 @@ struct SecurityModule: Module {
 
     static func getValueForKey(_ context: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
         guard await context.checkSameSecurityOrigin() else { return nil }
-        guard let key = kwArgs[.key] as? String, let service = context.frameInfo.url?.host else {
+        guard let key = kwArgs[.key] as? String, let service = context.frameInfo.securityOrigin?.host else {
             return nil
         }
         
@@ -59,7 +59,7 @@ struct SecurityModule: Module {
     }
     
     static func saveValueForKey(_ context: FunctionContext, _ kwArgs: FunctionArguments) async throws -> (any Encodable & Sendable)? {
-        guard let key = kwArgs[.key] as? String, let service = context.frameInfo.url?.host, let rawData = kwArgs[.data] else {
+        guard let key = kwArgs[.key] as? String, let service = context.frameInfo.securityOrigin?.host, let rawData = kwArgs[.data] else {
             return nil
         }
         let syncronizable = (kwArgs[.synchronizable] as? Bool ?? false)
@@ -78,7 +78,7 @@ struct SecurityModule: Module {
         try await Vault(.generic(service: service))
             .set(
                 data, for: .init(key),
-                isSyncrhronized: syncronizable,
+                isSynchronized: syncronizable,
                 accessControl: SecAccessControl.create(kwArgs: kwArgs)
             )
         return nil
